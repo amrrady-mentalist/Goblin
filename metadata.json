@@ -1,0 +1,6 @@
+{
+  "name": "Goblin",
+  "description": "Magnetic movement sensing creature for mentalism, magic cues, and subtle magnetic motion detection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
