@@ -72,6 +72,8 @@ fun StealthOverlay(
                 CreatureState.AWAKE -> Color(0xFF00E5FF).copy(alpha = 0.25f)
                 CreatureState.STIRRING -> Color(0xFFFFB300).copy(alpha = 0.15f)
                 CreatureState.SLUMBERING -> Color(0xFF1E293B).copy(alpha = 0.3f)
+                CreatureState.CALIBRATING -> Color(0xFF38BDF8).copy(alpha = 0.4f)
+                CreatureState.DORMANT -> Color.Transparent
             }
 
             Box(

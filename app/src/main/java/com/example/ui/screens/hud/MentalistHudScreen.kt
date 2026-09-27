@@ -82,6 +82,8 @@ fun MentalistHudScreen(
     }
 
     val stateColor = when (creatureState) {
+        CreatureState.DORMANT -> Color(0xFF64748B)
+        CreatureState.CALIBRATING -> Color(0xFF38BDF8)
         CreatureState.SLUMBERING -> SlumberGreen
         CreatureState.STIRRING -> StirringAmber
         CreatureState.AWAKE -> ElectricCyan

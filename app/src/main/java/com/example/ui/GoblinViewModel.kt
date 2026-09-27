@@ -35,6 +35,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     val readingState: StateFlow<MagneticReading>
     val creatureState: StateFlow<CreatureState>
+    val isPoweredOn: StateFlow<Boolean>
 
     private val _currentTab = MutableStateFlow(PerformanceTab.CREATURE)
     val currentTab: StateFlow<PerformanceTab> = _currentTab.asStateFlow()
@@ -80,6 +81,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
         readingState = sensorEngine.readingState
         creatureState = sensorEngine.creatureState
+        isPoweredOn = sensorEngine.isPoweredOn
 
         venueProfiles = repository.profiles.stateIn(
             viewModelScope,
@@ -132,6 +134,14 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                 _effectiveThreshold.value = sensorEngine.calculateEffectiveThreshold()
             }
         }
+    }
+
+    fun setPower(on: Boolean) {
+        sensorEngine.setPower(on)
+    }
+
+    fun togglePower() {
+        sensorEngine.togglePower()
     }
 
     fun setTab(tab: PerformanceTab) {

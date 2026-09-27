@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Tune
@@ -109,6 +110,7 @@ class MainActivity : ComponentActivity() {
 fun GoblinMainApp(viewModel: GoblinViewModel) {
     val reading by viewModel.readingState.collectAsStateWithLifecycle()
     val creatureState by viewModel.creatureState.collectAsStateWithLifecycle()
+    val isPoweredOn by viewModel.isPoweredOn.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val fogLevel by viewModel.fogLevel.collectAsStateWithLifecycle()
     val effectiveThreshold by viewModel.effectiveThreshold.collectAsStateWithLifecycle()
@@ -140,6 +142,8 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                                     .size(10.dp)
                                     .background(
                                         when (creatureState) {
+                                            com.example.domain.model.CreatureState.DORMANT -> Color(0xFF64748B)
+                                            com.example.domain.model.CreatureState.CALIBRATING -> Color(0xFF38BDF8)
                                             com.example.domain.model.CreatureState.SLUMBERING -> SlumberGreen
                                             com.example.domain.model.CreatureState.STIRRING -> StirringAmber
                                             com.example.domain.model.CreatureState.AWAKE -> ElectricCyan
@@ -176,6 +180,18 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                         }
                     },
                     actions = {
+                        // Master On / Off Power Button
+                        IconButton(
+                            onClick = { viewModel.togglePower() },
+                            modifier = Modifier.testTag("topbar_power_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PowerSettingsNew,
+                                contentDescription = if (isPoweredOn) "Turn Off Detector" else "Turn On Detector",
+                                tint = if (isPoweredOn) SlumberGreen else Color(0xFFEF4444)
+                            )
+                        }
+
                         IconButton(
                             onClick = { showSettingsSheet = true },
                             modifier = Modifier.testTag("settings_button")
@@ -271,6 +287,8 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             effectiveThreshold = effectiveThreshold,
                             fogLevel = fogLevel,
                             hapticType = hapticType,
+                            isPoweredOn = isPoweredOn,
+                            onTogglePower = { viewModel.togglePower() },
                             onFogChange = { viewModel.setFogLevel(it) },
                             onTareBaseline = { viewModel.tareBaseline() },
                             onEnterStealth = { viewModel.setStealth(true) },

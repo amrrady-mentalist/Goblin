@@ -67,6 +67,8 @@ fun OrganicEyeCanvas(
 
     // Color transition based on creature state
     val mainColor = when (creatureState) {
+        CreatureState.DORMANT -> Color(0xFF64748B)
+        CreatureState.CALIBRATING -> Color(0xFF38BDF8)
         CreatureState.SLUMBERING -> SlumberGreen
         CreatureState.STIRRING -> StirringAmber
         CreatureState.AWAKE -> ElectricCyan
@@ -74,6 +76,8 @@ fun OrganicEyeCanvas(
     }
 
     val glowAlpha = when (creatureState) {
+        CreatureState.DORMANT -> 0.12f
+        CreatureState.CALIBRATING -> 0.50f
         CreatureState.SLUMBERING -> 0.35f
         CreatureState.STIRRING -> 0.65f
         CreatureState.AWAKE -> 0.85f

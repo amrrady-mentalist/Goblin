@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.Adjust
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CompassCalibration
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
@@ -40,6 +43,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,6 +80,8 @@ fun CreatureScreen(
     effectiveThreshold: Float,
     fogLevel: Float,
     hapticType: HapticFeedbackType,
+    isPoweredOn: Boolean = true,
+    onTogglePower: () -> Unit = {},
     onFogChange: (Float) -> Unit,
     onTareBaseline: () -> Unit,
     onEnterStealth: () -> Unit,
@@ -85,6 +92,8 @@ fun CreatureScreen(
 
     val stateColor by animateColorAsState(
         targetValue = when (creatureState) {
+            CreatureState.DORMANT -> Color(0xFF64748B)
+            CreatureState.CALIBRATING -> Color(0xFF38BDF8)
             CreatureState.SLUMBERING -> SlumberGreen
             CreatureState.STIRRING -> StirringAmber
             CreatureState.AWAKE -> ElectricCyan
@@ -102,6 +111,20 @@ fun CreatureScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Master Power & Standby Control Card
+        MasterPowerCard(
+            isPoweredOn = isPoweredOn,
+            onTogglePower = onTogglePower
+        )
+
+        // Motion Immunity / Room Background Status Banner
+        if (isPoweredOn) {
+            MotionShieldBanner(
+                isPhoneMoving = reading.isPhoneMoving,
+                creatureState = creatureState
+            )
+        }
+
         // 1. Status Indicator & Creature Mood Banner
         CreatureStatusCard(
             creatureState = creatureState,
@@ -474,6 +497,156 @@ fun FogControlCard(
                     text = "More Stable",
                     color = TextDim,
                     fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MasterPowerCard(
+    isPoweredOn: Boolean,
+    onTogglePower: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("master_power_card")
+            .clickable { onTogglePower() },
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isPoweredOn) MidnightCard else Color(0xFF1E1E2E)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.5.dp,
+            if (isPoweredOn) SlumberGreen.copy(alpha = 0.5f) else Color(0xFFEF4444).copy(alpha = 0.4f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isPoweredOn) SlumberGreen.copy(alpha = 0.2f) else Color(0xFFEF4444).copy(alpha = 0.15f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PowerSettingsNew,
+                        contentDescription = "Power Status",
+                        tint = if (isPoweredOn) SlumberGreen else Color(0xFFEF4444),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Column {
+                    Text(
+                        text = if (isPoweredOn) "DETECTOR ARMED & ACTIVE" else "DETECTOR POWERED OFF",
+                        color = if (isPoweredOn) SlumberGreen else Color(0xFFFCA5A5),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = if (isPoweredOn) "Guarding room field • Tap to shut off" else "Sensors dormant • Tap to turn on",
+                        color = TextMedium,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Switch(
+                checked = isPoweredOn,
+                onCheckedChange = { onTogglePower() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = SlumberGreen,
+                    checkedTrackColor = SlumberGreen.copy(alpha = 0.35f),
+                    uncheckedThumbColor = Color(0xFF94A3B8),
+                    uncheckedTrackColor = Color(0xFF334155)
+                ),
+                modifier = Modifier.testTag("master_power_switch")
+            )
+        }
+    }
+}
+
+@Composable
+fun MotionShieldBanner(
+    isPhoneMoving: Boolean,
+    creatureState: CreatureState
+) {
+    val bannerBg = when {
+        isPhoneMoving -> StirringAmber.copy(alpha = 0.15f)
+        creatureState == CreatureState.CALIBRATING -> Color(0xFF38BDF8).copy(alpha = 0.15f)
+        else -> SlumberGreen.copy(alpha = 0.12f)
+    }
+    val borderColor = when {
+        isPhoneMoving -> StirringAmber.copy(alpha = 0.45f)
+        creatureState == CreatureState.CALIBRATING -> Color(0xFF38BDF8).copy(alpha = 0.45f)
+        else -> SlumberGreen.copy(alpha = 0.3f)
+    }
+    val contentColor = when {
+        isPhoneMoving -> StirringAmber
+        creatureState == CreatureState.CALIBRATING -> Color(0xFF38BDF8)
+        else -> SlumberGreen
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = bannerBg),
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = when {
+                    isPhoneMoving -> Icons.Default.PhoneAndroid
+                    creatureState == CreatureState.CALIBRATING -> Icons.Default.CompassCalibration
+                    else -> Icons.Default.Security
+                },
+                contentDescription = "Shield Status",
+                tint = contentColor,
+                modifier = Modifier.size(20.dp)
+            )
+
+            Column {
+                Text(
+                    text = when {
+                        isPhoneMoving -> "Self-Movement Ignored"
+                        creatureState == CreatureState.CALIBRATING -> "Attuning to Room Field"
+                        else -> "Stationary Guard Mode"
+                    },
+                    color = contentColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = when {
+                        isPhoneMoving -> "Phone in motion: vibration alerts suppressed until settled flat."
+                        creatureState == CreatureState.CALIBRATING -> "Mapping ambient room magnetism in background..."
+                        else -> "Immune to phone handling. Ready to detect moving magnetic objects."
+                    },
+                    color = TextHigh.copy(alpha = 0.85f),
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp
                 )
             }
         }

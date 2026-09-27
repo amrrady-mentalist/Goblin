@@ -4,10 +4,12 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 enum class CreatureState(val label: String, val subtitle: String) {
-    SLUMBERING("Slumbering", "Attuned to room baseline. No magnetic motion."),
-    STIRRING("Stirring", "Faint flux disturbance detected in the fog."),
+    DORMANT("Powered Off", "Sensors in standby. Tap Power to turn on."),
+    CALIBRATING("Attuning to Room", "Learning ambient room magnetism..."),
+    SLUMBERING("Armed & Guarding", "Attuned to room baseline. Waiting for magnetic object."),
+    STIRRING("Stirring", "Faint magnetic movement detected in the room."),
     AWAKE("Awake", "Active magnetic movement nearby."),
-    STRIKING("Striking!", "Magnetic threshold breached! Alerting performer.")
+    STRIKING("Striking!", "Magnetic movement detected! Alerting performer.")
 }
 
 enum class HapticFeedbackType(val displayName: String, val description: String) {
@@ -48,6 +50,8 @@ data class MagneticReading(
     val deltaMagnitude: Float = 0f,
     val rateOfChange: Float = 0f,
     val noiseFloor: Float = 0.5f,
+    val isPhoneMoving: Boolean = false,
+    val isRoomAttuned: Boolean = true,
     val timestamp: Long = System.currentTimeMillis()
 ) {
     val totalFieldMagnitude: Float

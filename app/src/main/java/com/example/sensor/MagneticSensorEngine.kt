@@ -28,17 +28,24 @@ class MagneticSensorEngine(
 ) : SensorEventListener {
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+
     private val magnetometer: Sensor? = sensorManager?.let { sm ->
         sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED)
             ?: sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
     }
+    private val accelerometer: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val gyroscope: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val proximitySensor: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+
+    // Power State Flow (On / Off)
+    private val _isPoweredOn = MutableStateFlow(true)
+    val isPoweredOn: StateFlow<Boolean> = _isPoweredOn.asStateFlow()
 
     // Current State Flow
     private val _readingState = MutableStateFlow(MagneticReading())
     val readingState: StateFlow<MagneticReading> = _readingState.asStateFlow()
 
-    private val _creatureState = MutableStateFlow(CreatureState.SLUMBERING)
+    private val _creatureState = MutableStateFlow(CreatureState.CALIBRATING)
     val creatureState: StateFlow<CreatureState> = _creatureState.asStateFlow()
 
     // Strike Event Trigger Flow for Haptics & Logging
@@ -55,11 +62,23 @@ class MagneticSensorEngine(
 
     val isSensorAvailable: Boolean get() = magnetometer != null
 
-    // Baseline adaptation variables
+    // Room baseline adaptation variables
     private var baseBx = 0f
     private var baseBy = 0f
     private var baseBz = 0f
     private var isBaselineInitialized = false
+
+    // Room understanding / learning phase
+    private var isCalibratingRoom = true
+    private var calibrationStartTimeMs = System.currentTimeMillis()
+    private var calibSampleCount = 0
+    private var calibSumX = 0f
+    private var calibSumY = 0f
+    private var calibSumZ = 0f
+
+    // Device motion & Inertial gating (ignoring phone's own movement)
+    private var lastMotionTimeMs = 0L
+    private val MOTION_SETTLE_WINDOW_MS = 650L // Wait 650ms after motion stops before arming
 
     // Rolling noise floor estimation
     private var noiseFloor = 0.6f
@@ -80,22 +99,44 @@ class MagneticSensorEngine(
 
     init {
         startListening()
+        startRoomCalibration()
+    }
+
+    fun setPower(enabled: Boolean) {
+        if (_isPoweredOn.value == enabled) return
+        _isPoweredOn.value = enabled
+        if (enabled) {
+            startListening()
+            startRoomCalibration()
+        } else {
+            stopListening()
+            _creatureState.value = CreatureState.DORMANT
+            _readingState.value = _readingState.value.copy(
+                deltaMagnitude = 0f,
+                rateOfChange = 0f,
+                isPhoneMoving = false,
+                isRoomAttuned = false
+            )
+        }
+    }
+
+    fun togglePower() {
+        setPower(!_isPoweredOn.value)
     }
 
     fun startListening() {
+        if (!_isPoweredOn.value) return
         magnetometer?.let { sensor ->
-            sensorManager?.registerListener(
-                this,
-                sensor,
-                SensorManager.SENSOR_DELAY_GAME
-            )
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+        }
+        accelerometer?.let { sensor ->
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+        }
+        gyroscope?.let { sensor ->
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
         }
         proximitySensor?.let { sensor ->
-            sensorManager?.registerListener(
-                this,
-                sensor,
-                SensorManager.SENSOR_DELAY_NORMAL
-            )
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
         }
     }
 
@@ -104,15 +145,30 @@ class MagneticSensorEngine(
     }
 
     /**
-     * Instantly tares / recalibrates the baseline to current magnetic conditions.
-     * Perfect for resetting room magnetism before or during a routine.
+     * Starts understanding the magnetic field in the room in the background.
+     * Samples the ambient room field while ignoring initial handoff/handling noise.
+     */
+    fun startRoomCalibration() {
+        isCalibratingRoom = true
+        calibrationStartTimeMs = System.currentTimeMillis()
+        calibSampleCount = 0
+        calibSumX = 0f
+        calibSumY = 0f
+        calibSumZ = 0f
+        _creatureState.value = CreatureState.CALIBRATING
+    }
+
+    /**
+     * Instantly tares / recalibrates the baseline to current room conditions.
      */
     fun tareBaseline() {
+        if (!_isPoweredOn.value) return
         val current = _readingState.value
         baseBx = current.x
         baseBy = current.y
         baseBz = current.z
         isBaselineInitialized = true
+        isCalibratingRoom = false
         _creatureState.value = CreatureState.SLUMBERING
     }
 
@@ -121,26 +177,46 @@ class MagneticSensorEngine(
      * and the measured environmental noise floor.
      */
     fun calculateEffectiveThreshold(): Float {
-        // Fog maps exponentially from subtle detection (~1.0 uT) to dense shield (~16.0 uT)
         val fogScaled = customBaseThreshold * (0.4f + 3.2f * fogLevel * fogLevel)
-        // Add dynamic environmental noise floor margin
         return max(0.8f, fogScaled + noiseFloor * (1.0f + 1.5f * fogLevel))
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null) return
+        if (event == null || !_isPoweredOn.value) return
 
-        if (event.sensor.type == Sensor.TYPE_PROXIMITY) {
-            val dist = event.values[0]
-            val maxRange = event.sensor.maximumRange
-            _isPocketCovered.value = dist < 2.5f || (dist < maxRange && maxRange <= 5.0f)
-            return
-        }
+        when (event.sensor.type) {
+            Sensor.TYPE_PROXIMITY -> {
+                val dist = event.values[0]
+                val maxRange = event.sensor.maximumRange
+                _isPocketCovered.value = dist < 2.5f || (dist < maxRange && maxRange <= 5.0f)
+            }
 
-        if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD ||
-            event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED
-        ) {
-            processMagneticEvent(event)
+            Sensor.TYPE_ACCELEROMETER -> {
+                val ax = event.values[0]
+                val ay = event.values[1]
+                val az = event.values[2]
+                val accelMag = sqrt(ax * ax + ay * ay + az * az)
+                // Deviations from Earth gravity (9.81 m/s²) indicate device physical movement
+                val dynamicAccel = abs(accelMag - SensorManager.GRAVITY_EARTH)
+                if (dynamicAccel > 0.40f) {
+                    lastMotionTimeMs = System.currentTimeMillis()
+                }
+            }
+
+            Sensor.TYPE_GYROSCOPE -> {
+                val gx = event.values[0]
+                val gy = event.values[1]
+                val gz = event.values[2]
+                val rotationSpeed = sqrt(gx * gx + gy * gy + gz * gz)
+                if (rotationSpeed > 0.18f) { // Angular rotation > 0.18 rad/s
+                    lastMotionTimeMs = System.currentTimeMillis()
+                }
+            }
+
+            Sensor.TYPE_MAGNETIC_FIELD,
+            Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED -> {
+                processMagneticEvent(event)
+            }
         }
     }
 
@@ -148,7 +224,12 @@ class MagneticSensorEngine(
         val rawX = event.values[0]
         val rawY = event.values[1]
         val rawZ = event.values[2]
+        val nowMs = System.currentTimeMillis()
 
+        // Detect if the phone itself is moving (picked up, turned, laid down)
+        val isDevicePhysicallyMoving = (nowMs - lastMotionTimeMs) < MOTION_SETTLE_WINDOW_MS
+
+        // Phase 1: First reading initialization
         if (!isBaselineInitialized) {
             baseBx = rawX
             baseBy = rawY
@@ -156,14 +237,101 @@ class MagneticSensorEngine(
             isBaselineInitialized = true
         }
 
-        // Compute delta vector from adaptive baseline
+        // Phase 2: Understanding room magnetism in the background
+        if (isCalibratingRoom) {
+            calibSumX += rawX
+            calibSumY += rawY
+            calibSumZ += rawZ
+            calibSampleCount++
+
+            // If phone is moving, reset calibration timer to ensure clean room baseline once placed down
+            if (isDevicePhysicallyMoving) {
+                calibrationStartTimeMs = nowMs
+                calibSampleCount = 0
+                calibSumX = 0f
+                calibSumY = 0f
+                calibSumZ = 0f
+                baseBx = rawX
+                baseBy = rawY
+                baseBz = rawZ
+            } else if (nowMs - calibrationStartTimeMs > 1200L && calibSampleCount >= 20) {
+                // Room field learned while phone was resting
+                baseBx = calibSumX / calibSampleCount
+                baseBy = calibSumY / calibSampleCount
+                baseBz = calibSumZ / calibSampleCount
+                isCalibratingRoom = false
+                _creatureState.value = CreatureState.SLUMBERING
+            }
+
+            _readingState.value = MagneticReading(
+                x = rawX,
+                y = rawY,
+                z = rawZ,
+                baselineX = baseBx,
+                baselineY = baseBy,
+                baselineZ = baseBz,
+                deltaX = 0f,
+                deltaY = 0f,
+                deltaZ = 0f,
+                deltaMagnitude = 0f,
+                rateOfChange = 0f,
+                noiseFloor = noiseFloor,
+                isPhoneMoving = isDevicePhysicallyMoving,
+                isRoomAttuned = !isCalibratingRoom,
+                timestamp = nowMs
+            )
+            return
+        }
+
+        // Phase 3: Phone Motion Immunity (Ignoring phone's own movement)
+        if (isDevicePhysicallyMoving) {
+            // When the phone itself moves or is being placed flat on a table:
+            // Fast adaptation follows the phone's new physical orientation in the room's magnetic field.
+            val rapidAlpha = 0.35f
+            baseBx = (1f - rapidAlpha) * baseBx + rapidAlpha * rawX
+            baseBy = (1f - rapidAlpha) * baseBy + rapidAlpha * rawY
+            baseBz = (1f - rapidAlpha) * baseBz + rapidAlpha * rawZ
+
+            // Suppress all false alerts while the phone moves!
+            _creatureState.value = CreatureState.SLUMBERING
+
+            _readingState.value = MagneticReading(
+                x = rawX,
+                y = rawY,
+                z = rawZ,
+                baselineX = baseBx,
+                baselineY = baseBy,
+                baselineZ = baseBz,
+                deltaX = 0f,
+                deltaY = 0f,
+                deltaZ = 0f,
+                deltaMagnitude = 0f,
+                rateOfChange = 0f,
+                noiseFloor = noiseFloor,
+                isPhoneMoving = true,
+                isRoomAttuned = false,
+                timestamp = nowMs
+            )
+            return
+        }
+
+        // Phase 4: Stationary Phone Detecting Moving Magnetic Objects
+        // Phone is resting flat on a surface or held steady in pocket.
+        // Any change in the magnetic field is strictly an external moving magnet!
         val dx = rawX - baseBx
         val dy = rawY - baseBy
         val dz = rawZ - baseBz
-        val deltaMag = sqrt(dx * dx + dy * dy + dz * dz)
+        val vectorDelta = sqrt(dx * dx + dy * dy + dz * dz)
+
+        // Compute total scalar flux density magnitude
+        val currentScalar = sqrt(rawX * rawX + rawY * rawY + rawZ * rawZ)
+        val baseScalar = sqrt(baseBx * baseBx + baseBy * baseBy + baseBz * baseBz)
+        val scalarDelta = abs(currentScalar - baseScalar)
+
+        // A moving magnet causes distortion in both vector and scalar field
+        val deltaMag = max(vectorDelta, scalarDelta)
 
         // Instantaneous rate of change dB/dt
-        val nowMs = System.currentTimeMillis()
         val dtSec = if (lastTimestampNs > 0) {
             max(0.005f, (event.timestamp - lastTimestampNs) / 1_000_000_000f)
         } else {
@@ -173,8 +341,9 @@ class MagneticSensorEngine(
         lastTimestampNs = event.timestamp
         lastDeltaMagnitude = deltaMag
 
-        // Update rolling noise floor buffer during calm states
         val threshold = calculateEffectiveThreshold()
+
+        // Noise floor calculation during quiet ambient periods
         if (deltaMag < threshold * 0.6f) {
             recentDeltas[deltaIndex % recentDeltas.size] = deltaMag
             deltaIndex++
@@ -183,19 +352,16 @@ class MagneticSensorEngine(
             noiseFloor = max(0.3f, sum / recentDeltas.size)
         }
 
-        // Dynamic Room Baseline Adaptation:
-        // When quiet, slowly absorb environmental drifts.
-        // When active magnetic change is present, freeze/slow adaptation so the magnet isn't canceled out!
-        val isDisturbed = deltaMag > (threshold * 0.5f)
-        val alpha = if (isDisturbed) {
-            0.0005f // Nearly frozen while magnet moves near phone
-        } else {
-            0.035f // Smooth adaptive tracking of room background
-        }
+        // Dynamic Baseline Adaptation:
+        // When quiet, slowly track room temperature/ambient drifts (alpha = 0.005).
+        // When an external magnet moves nearby (deltaMag > threshold * 0.5), freeze adaptation completely
+        // so the moving magnet is never canceled out!
+        val isMagnetPresent = deltaMag > (threshold * 0.5f)
+        val adaptationAlpha = if (isMagnetPresent) 0.0f else 0.006f
 
-        baseBx = (1f - alpha) * baseBx + alpha * rawX
-        baseBy = (1f - alpha) * baseBy + alpha * rawY
-        baseBz = (1f - alpha) * baseBz + alpha * rawZ
+        baseBx = (1f - adaptationAlpha) * baseBx + adaptationAlpha * rawX
+        baseBy = (1f - adaptationAlpha) * baseBy + adaptationAlpha * rawY
+        baseBz = (1f - adaptationAlpha) * baseBz + adaptationAlpha * rawZ
 
         // Determine Creature State
         val newState = when {
@@ -219,11 +385,13 @@ class MagneticSensorEngine(
             deltaMagnitude = deltaMag,
             rateOfChange = rateOfChange,
             noiseFloor = noiseFloor,
+            isPhoneMoving = false,
+            isRoomAttuned = true,
             timestamp = nowMs
         )
         _readingState.value = reading
 
-        // Check strike trigger for haptics
+        // Emit strike event for haptic cue (debounced)
         if (deltaMag >= threshold) {
             if (nowMs - lastStrikeTimeMs >= debounceMs) {
                 lastStrikeTimeMs = nowMs
@@ -234,7 +402,5 @@ class MagneticSensorEngine(
         }
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Uncalibrated / Calibrated accuracy change
-    }
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 }
