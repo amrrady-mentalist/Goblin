@@ -107,6 +107,10 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         // Listen for strike events from sensor engine
         viewModelScope.launch {
             sensorEngine.strikeEvents.collectLatest { reading ->
+                // Tell the sensor to ignore its own vibration motor's interference
+                // before firing it, so the pulse can't re-trigger another "strike".
+                sensorEngine.notifyHapticPulse()
+
                 // Play 2 strong vibrations (or configured haptic sensation)
                 hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
 
