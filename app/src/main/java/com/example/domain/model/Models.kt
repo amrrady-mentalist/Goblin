@@ -13,6 +13,7 @@ enum class CreatureState(val label: String, val subtitle: String) {
 }
 
 enum class HapticFeedbackType(val displayName: String, val description: String) {
+    DOUBLE_STRONG("2 Strong Pulses (Pocket)", "Two unmistakable heavy vibrations designed for deep pocket detection."),
     GHOST_TAP("Ghost Tap", "Microscopic tactile click. Imperceptible to spectators, felt in pocket."),
     HEARTBEAT("Creature Heartbeat", "Dual organic thud that intensifies with speed of approach."),
     DYNAMIC_PURR("Flux Purr", "Continuous vibration scaled to instantaneous magnetic rate."),

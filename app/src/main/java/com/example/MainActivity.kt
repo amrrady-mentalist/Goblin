@@ -1,9 +1,12 @@
 package com.example
 
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
@@ -46,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -111,6 +115,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val reading by viewModel.readingState.collectAsStateWithLifecycle()
     val creatureState by viewModel.creatureState.collectAsStateWithLifecycle()
     val isPoweredOn by viewModel.isPoweredOn.collectAsStateWithLifecycle()
+    val isRoomWideMode by viewModel.isRoomWideMode.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val fogLevel by viewModel.fogLevel.collectAsStateWithLifecycle()
     val effectiveThreshold by viewModel.effectiveThreshold.collectAsStateWithLifecycle()
@@ -123,6 +128,17 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val activeProfile by viewModel.activeProfile.collectAsStateWithLifecycle()
     val venueProfiles by viewModel.venueProfiles.collectAsStateWithLifecycle()
     val recentEvents by viewModel.recentEvents.collectAsStateWithLifecycle()
+
+    // Immediate Notification Permission Request for Android 13+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val permissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission()
+        ) { _ -> }
+
+        LaunchedEffect(Unit) {
+            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     var showSettingsSheet by remember { mutableStateOf(false) }
 
@@ -288,7 +304,9 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             fogLevel = fogLevel,
                             hapticType = hapticType,
                             isPoweredOn = isPoweredOn,
+                            isRoomWideMode = isRoomWideMode,
                             onTogglePower = { viewModel.togglePower() },
+                            onToggleRoomWideMode = { viewModel.toggleRoomWideMode() },
                             onFogChange = { viewModel.setFogLevel(it) },
                             onTareBaseline = { viewModel.tareBaseline() },
                             onEnterStealth = { viewModel.setStealth(true) },

@@ -81,7 +81,9 @@ fun CreatureScreen(
     fogLevel: Float,
     hapticType: HapticFeedbackType,
     isPoweredOn: Boolean = true,
+    isRoomWideMode: Boolean = true,
     onTogglePower: () -> Unit = {},
+    onToggleRoomWideMode: () -> Unit = {},
     onFogChange: (Float) -> Unit,
     onTareBaseline: () -> Unit,
     onEnterStealth: () -> Unit,
@@ -117,8 +119,15 @@ fun CreatureScreen(
             onTogglePower = onTogglePower
         )
 
-        // Motion Immunity / Room Background Status Banner
+        // Room-Wide High-Sensitivity Toggle Card
         if (isPoweredOn) {
+            RoomWideScanCard(
+                isRoomWideMode = isRoomWideMode,
+                effectiveThreshold = effectiveThreshold,
+                onToggleRoomWideMode = onToggleRoomWideMode
+            )
+
+            // Motion Immunity / Room Background Status Banner
             MotionShieldBanner(
                 isPhoneMoving = reading.isPhoneMoving,
                 creatureState = creatureState
@@ -649,6 +658,108 @@ fun MotionShieldBanner(
                     lineHeight = 14.sp
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun RoomWideScanCard(
+    isRoomWideMode: Boolean,
+    effectiveThreshold: Float,
+    onToggleRoomWideMode: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("room_wide_scan_card")
+            .clickable { onToggleRoomWideMode() },
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isRoomWideMode) ElectricCyan.copy(alpha = 0.12f) else MidnightCard
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.2.dp,
+            if (isRoomWideMode) ElectricCyan.copy(alpha = 0.6f) else MidnightCardBorder
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isRoomWideMode) ElectricCyan.copy(alpha = 0.2f) else Color(0xFF334155)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Sensors,
+                        contentDescription = "Room Scan",
+                        tint = if (isRoomWideMode) ElectricCyan else TextMedium,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = if (isRoomWideMode) "ROOM-WIDE SCAN: ACTIVE" else "CLOSE-RANGE (5-15cm)",
+                            color = if (isRoomWideMode) ElectricCyan else TextHigh,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isRoomWideMode) ElectricCyan.copy(alpha = 0.2f) else Color(0xFF334155))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = String.format(Locale.US, "%.2f µT", effectiveThreshold),
+                                color = if (isRoomWideMode) ElectricCyan else TextMedium,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Text(
+                        text = if (isRoomWideMode)
+                            "Sub-microTesla mode: detecting faint movement across the whole room"
+                        else
+                            "Restricted to close range proximity. Tap to enable whole-room scan.",
+                        color = TextMedium,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp
+                    )
+                }
+            }
+
+            Switch(
+                checked = isRoomWideMode,
+                onCheckedChange = { onToggleRoomWideMode() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = ElectricCyan,
+                    checkedTrackColor = ElectricCyan.copy(alpha = 0.35f),
+                    uncheckedThumbColor = Color(0xFF94A3B8),
+                    uncheckedTrackColor = Color(0xFF334155)
+                ),
+                modifier = Modifier.testTag("room_wide_switch")
+            )
         }
     }
 }

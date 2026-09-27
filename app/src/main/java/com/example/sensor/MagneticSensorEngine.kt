@@ -93,9 +93,10 @@ class MagneticSensorEngine(
     private var lastStrikeTimeMs: Long = 0L
 
     // Configuration parameters
+    @Volatile var isRoomWideMode: Boolean = true // Ultra-high sensitivity for whole room detection
     @Volatile var fogLevel: Float = 0.35f // 0.0 (hypersensitive) to 1.0 (heavy stage shield)
-    @Volatile var customBaseThreshold: Float = 3.0f // microTesla
-    @Volatile var debounceMs: Long = 350L
+    @Volatile var customBaseThreshold: Float = 1.2f // microTesla (standard tabletop)
+    @Volatile var debounceMs: Long = 400L
 
     init {
         startListening()
@@ -173,12 +174,19 @@ class MagneticSensorEngine(
     }
 
     /**
-     * Calculates the dynamic threshold based on the Fog slider setting
+     * Calculates the dynamic threshold based on Room-Wide mode, Fog setting,
      * and the measured environmental noise floor.
      */
     fun calculateEffectiveThreshold(): Float {
-        val fogScaled = customBaseThreshold * (0.4f + 3.2f * fogLevel * fogLevel)
-        return max(0.8f, fogScaled + noiseFloor * (1.0f + 1.5f * fogLevel))
+        return if (isRoomWideMode) {
+            // Room-wide faint motion detection:
+            // Sub-microTesla threshold (0.18 uT - 0.45 uT) calibrated dynamically to noise floor
+            val scaledFog = 0.12f + (0.30f * fogLevel * fogLevel)
+            max(0.16f, scaledFog + (noiseFloor * 0.7f))
+        } else {
+            val fogScaled = customBaseThreshold * (0.4f + 3.2f * fogLevel * fogLevel)
+            max(0.6f, fogScaled + noiseFloor * (1.0f + 1.5f * fogLevel))
+        }
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
@@ -349,25 +357,30 @@ class MagneticSensorEngine(
             deltaIndex++
             var sum = 0f
             for (d in recentDeltas) sum += d
-            noiseFloor = max(0.3f, sum / recentDeltas.size)
+            noiseFloor = max(0.06f, sum / recentDeltas.size)
         }
 
         // Dynamic Baseline Adaptation:
-        // When quiet, slowly track room temperature/ambient drifts (alpha = 0.005).
-        // When an external magnet moves nearby (deltaMag > threshold * 0.5), freeze adaptation completely
+        // When quiet, slowly track room temperature/ambient drifts.
+        // When an external magnetic disturbance is detected, freeze adaptation completely
         // so the moving magnet is never canceled out!
-        val isMagnetPresent = deltaMag > (threshold * 0.5f)
-        val adaptationAlpha = if (isMagnetPresent) 0.0f else 0.006f
+        val isMagnetPresent = deltaMag > (threshold * 0.45f)
+        val adaptationAlpha = if (isMagnetPresent) 0.0f else 0.003f
 
         baseBx = (1f - adaptationAlpha) * baseBx + adaptationAlpha * rawX
         baseBy = (1f - adaptationAlpha) * baseBy + adaptationAlpha * rawY
         baseBz = (1f - adaptationAlpha) * baseBz + adaptationAlpha * rawZ
 
+        // Trigger condition for room-wide and faint movement:
+        // Trigger if delta magnitude reaches threshold, OR if there is an active magnetic rate transient (dB/dt)
+        // indicating a moving magnetic device across the room
+        val isStrike = deltaMag >= threshold || (deltaMag >= threshold * 0.65f && rateOfChange >= 0.85f)
+
         // Determine Creature State
         val newState = when {
-            deltaMag >= threshold -> CreatureState.STRIKING
-            deltaMag >= threshold * 0.70f -> CreatureState.AWAKE
-            deltaMag >= threshold * 0.35f -> CreatureState.STIRRING
+            isStrike -> CreatureState.STRIKING
+            deltaMag >= threshold * 0.70f || rateOfChange >= 0.60f -> CreatureState.AWAKE
+            deltaMag >= threshold * 0.35f || rateOfChange >= 0.30f -> CreatureState.STIRRING
             else -> CreatureState.SLUMBERING
         }
         _creatureState.value = newState
@@ -392,7 +405,7 @@ class MagneticSensorEngine(
         _readingState.value = reading
 
         // Emit strike event for haptic cue (debounced)
-        if (deltaMag >= threshold) {
+        if (isStrike) {
             if (nowMs - lastStrikeTimeMs >= debounceMs) {
                 lastStrikeTimeMs = nowMs
                 externalScope.launch(Dispatchers.Default) {

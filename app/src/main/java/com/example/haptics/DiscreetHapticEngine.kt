@@ -20,7 +20,7 @@ class DiscreetHapticEngine(private val context: Context) {
         context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
     }
 
-    var hapticType: HapticFeedbackType = HapticFeedbackType.GHOST_TAP
+    var hapticType: HapticFeedbackType = HapticFeedbackType.DOUBLE_STRONG
     var strength: VibrationStrength = VibrationStrength.MEDIUM
     var isEnabled: Boolean = true
 
@@ -30,12 +30,27 @@ class DiscreetHapticEngine(private val context: Context) {
         if (!vib.hasVibrator()) return
 
         when (hapticType) {
+            HapticFeedbackType.DOUBLE_STRONG -> playDoubleStrong(vib)
             HapticFeedbackType.GHOST_TAP -> playGhostTap(vib)
             HapticFeedbackType.HEARTBEAT -> playHeartbeat(vib)
             HapticFeedbackType.DYNAMIC_PURR -> playDynamicPurr(vib, deltaMagnitude, rateOfChange)
             HapticFeedbackType.SHARP_STRIKE -> playSharpStrike(vib)
             HapticFeedbackType.GEIGER_PULSE -> playGeigerTick(vib)
             HapticFeedbackType.MUTE -> Unit
+        }
+    }
+
+    private fun playDoubleStrong(vib: Vibrator) {
+        val amp = (255 * strength.multiplier).toInt().coerceIn(180, 255)
+        // 2 clear, heavy pulses: 160ms on, 110ms gap, 200ms on
+        val timings = longArrayOf(0, 160, 110, 200)
+        val amplitudes = intArrayOf(0, amp, 0, amp)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vib.hasAmplitudeControl()) {
+            vib.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(longArrayOf(0, 160, 110, 200), -1)
         }
     }
 

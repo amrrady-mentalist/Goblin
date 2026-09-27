@@ -12,6 +12,7 @@ import com.example.domain.model.HapticFeedbackType
 import com.example.domain.model.MagneticReading
 import com.example.domain.model.VibrationStrength
 import com.example.haptics.DiscreetHapticEngine
+import com.example.notification.DetectionNotificationManager
 import com.example.sensor.MagneticSensorEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,10 +33,14 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     private val repository: GoblinRepository
     val sensorEngine: MagneticSensorEngine
     val hapticEngine: DiscreetHapticEngine
+    val notificationManager: DetectionNotificationManager
 
     val readingState: StateFlow<MagneticReading>
     val creatureState: StateFlow<CreatureState>
     val isPoweredOn: StateFlow<Boolean>
+
+    private val _isRoomWideMode = MutableStateFlow(true)
+    val isRoomWideMode: StateFlow<Boolean> = _isRoomWideMode.asStateFlow()
 
     private val _currentTab = MutableStateFlow(PerformanceTab.CREATURE)
     val currentTab: StateFlow<PerformanceTab> = _currentTab.asStateFlow()
@@ -43,13 +48,13 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     private val _fogLevel = MutableStateFlow(0.35f)
     val fogLevel: StateFlow<Float> = _fogLevel.asStateFlow()
 
-    private val _customThresholdDelta = MutableStateFlow(3.0f)
+    private val _customThresholdDelta = MutableStateFlow(1.2f)
     val customThresholdDelta: StateFlow<Float> = _customThresholdDelta.asStateFlow()
 
-    private val _effectiveThreshold = MutableStateFlow(3.5f)
+    private val _effectiveThreshold = MutableStateFlow(0.28f)
     val effectiveThreshold: StateFlow<Float> = _effectiveThreshold.asStateFlow()
 
-    private val _hapticType = MutableStateFlow(HapticFeedbackType.GHOST_TAP)
+    private val _hapticType = MutableStateFlow(HapticFeedbackType.DOUBLE_STRONG)
     val hapticType: StateFlow<HapticFeedbackType> = _hapticType.asStateFlow()
 
     private val _vibrationStrength = MutableStateFlow(VibrationStrength.MEDIUM)
@@ -78,6 +83,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         repository = GoblinRepository(database.dao())
         sensorEngine = MagneticSensorEngine(application, viewModelScope)
         hapticEngine = DiscreetHapticEngine(application)
+        notificationManager = DetectionNotificationManager(application)
 
         readingState = sensorEngine.readingState
         creatureState = sensorEngine.creatureState
@@ -98,8 +104,15 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         // Listen for strike events from sensor engine
         viewModelScope.launch {
             sensorEngine.strikeEvents.collectLatest { reading ->
-                // Play haptic sensation
+                // Play 2 strong vibrations (or configured haptic sensation)
                 hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
+
+                // Send immediate local notification
+                notificationManager.sendImmediateDetectionNotification(
+                    deltaMagnitude = reading.deltaMagnitude,
+                    dominantDirection = reading.dominantDirection,
+                    isRoomWide = _isRoomWideMode.value
+                )
 
                 // Log detection event
                 val event = DetectionEventEntity(
@@ -142,6 +155,16 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun togglePower() {
         sensorEngine.togglePower()
+    }
+
+    fun setRoomWideMode(enabled: Boolean) {
+        _isRoomWideMode.value = enabled
+        sensorEngine.isRoomWideMode = enabled
+        _effectiveThreshold.value = sensorEngine.calculateEffectiveThreshold()
+    }
+
+    fun toggleRoomWideMode() {
+        setRoomWideMode(!_isRoomWideMode.value)
     }
 
     fun setTab(tab: PerformanceTab) {
