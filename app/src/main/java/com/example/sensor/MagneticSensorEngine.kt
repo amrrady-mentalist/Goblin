@@ -125,13 +125,13 @@ class MagneticSensorEngine(
     // while still tracking a genuine ~0.3-1.5s hand movement just fine.
     private var smoothedY = 0f
     private var isYFilterInit = false
-    private val jitterFilterAlpha = 0.30f
+    private val jitterFilterAlpha = 0.20f
 
-    // Requires the threshold to be breached for several consecutive samples
-    // (not just one noisy blip) before counting it as a real detection in
-    // Omni-Room mode.
-    private var consecutiveAboveCount = 0
-    private val REQUIRED_CONSECUTIVE_SAMPLES = 3
+    // In Omni-Room mode, requires the threshold to be breached continuously for
+    // a minimum stretch of real time (not a fixed sample count, since sensor
+    // delivery rate can vary) before counting it as a real detection.
+    private var omniAboveSinceMs: Long = 0L
+    private val OMNI_SUSTAIN_MS = 180L
 
     // If the "magnet present" state (which freezes baseline adaptation) drags on
     // far longer than a real hand-arc ever takes, it's drift/interference, not a
@@ -139,6 +139,20 @@ class MagneticSensorEngine(
     // stuck reporting a ghost forever.
     private var magnetPresentSinceMs: Long = 0L
     private val STUCK_PRESENCE_MS = 4000L
+
+    // Phone vibration motors are a known source of magnetometer interference —
+    // without this, a triggered "strike" vibration can perturb the field enough
+    // to look like more movement and re-trigger itself. Detection is blacked out
+    // for the duration of any haptic pulse plus a short settle buffer.
+    private var hapticBlackoutUntilMs: Long = 0L
+
+    /**
+     * Call this right when a haptic strike pulse is fired so the sensor briefly
+     * ignores readings while the vibration motor is active.
+     */
+    fun notifyHapticPulse(durationMs: Long = 300L) {
+        hapticBlackoutUntilMs = System.currentTimeMillis() + durationMs + 250L
+    }
 
     // Configuration parameters
     @Volatile var isRoomWideMode: Boolean = true // Ultra-high sensitivity for whole room detection
@@ -224,16 +238,19 @@ class MagneticSensorEngine(
     /**
      * Calculates the dynamic threshold based on Room-Wide mode, Fog setting,
      * and the measured environmental noise floor.
+     *
+     * Both branches require the signal to clear the measured ambient noise floor
+     * by a wide margin (2.5-4x, not ~1x) — a real magnet swept at 10-30cm swings
+     * several microtesla, so demanding a bigger, unmistakable margin above noise
+     * still catches it easily while rejecting ordinary ambient jitter.
      */
     fun calculateEffectiveThreshold(): Float {
         return if (isRoomWideMode) {
-            // Room-wide faint motion detection:
-            // Sub-microTesla threshold (0.18 uT - 0.45 uT) calibrated dynamically to noise floor
             val scaledFog = 0.12f + (0.30f * fogLevel * fogLevel)
-            max(0.16f, scaledFog + (noiseFloor * 0.7f))
+            max(0.55f, scaledFog + (noiseFloor * 2.5f))
         } else {
             val fogScaled = customBaseThreshold * (0.4f + 3.2f * fogLevel * fogLevel)
-            max(0.6f, fogScaled + noiseFloor * (1.0f + 1.5f * fogLevel))
+            max(1.0f, fogScaled + noiseFloor * (2.0f + 2.0f * fogLevel))
         }
     }
 
@@ -282,8 +299,11 @@ class MagneticSensorEngine(
         val rawZ = event.values[2]
         val nowMs = System.currentTimeMillis()
 
-        // Detect if the phone itself is moving (picked up, turned, laid down)
-        val isDevicePhysicallyMoving = (nowMs - lastMotionTimeMs) < MOTION_SETTLE_WINDOW_MS
+        // Detect if the phone itself is moving (picked up, turned, laid down),
+        // or if our own vibration motor recently fired (a known source of
+        // magnetometer interference) — both are treated the same way below.
+        val isDevicePhysicallyMoving = (nowMs - lastMotionTimeMs) < MOTION_SETTLE_WINDOW_MS ||
+            nowMs < hapticBlackoutUntilMs
 
         // Phase 1: First reading initialization
         if (!isBaselineInitialized) {
@@ -456,14 +476,17 @@ class MagneticSensorEngine(
         val (isStrike, currentGesturePhase) = if (_locatorMode.value == LocatorMode.WHICH_HAND_ARC) {
             evaluateHandArcGesture(nowMs, threshold)
         } else {
-            val instantBreach = deltaMag >= threshold || (deltaMag >= threshold * 0.65f && rateOfChange >= 0.85f)
-            if (instantBreach) {
-                consecutiveAboveCount++
+            // Omni-Room: a hard threshold crossing that must hold for OMNI_SUSTAIN_MS
+            // straight. The old rate-of-change shortcut let a single sharp noise
+            // spike count as a hit even below the main threshold, which was another
+            // source of ghosting — removed.
+            if (deltaMag >= threshold) {
+                if (omniAboveSinceMs == 0L) omniAboveSinceMs = nowMs
             } else {
-                consecutiveAboveCount = 0
+                omniAboveSinceMs = 0L
             }
-            val breached = consecutiveAboveCount >= REQUIRED_CONSECUTIVE_SAMPLES
-            Pair(breached, GesturePhase.IDLE)
+            val sustainedMs = if (omniAboveSinceMs > 0L) nowMs - omniAboveSinceMs else 0L
+            Pair(sustainedMs >= OMNI_SUSTAIN_MS, GesturePhase.IDLE)
         }
 
         // Determine Creature State
