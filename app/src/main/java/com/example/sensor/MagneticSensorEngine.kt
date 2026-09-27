@@ -118,6 +118,28 @@ class MagneticSensorEngine(
     // Strike debounce
     private var lastStrikeTimeMs: Long = 0L
 
+    // Low-pass filtered Y-axis reading. A single noisy raw sample is enough to
+    // breach the very low room-wide thresholds used below, which is what causes
+    // "ghost" triggers with nothing actually moving. Smoothing the signal before
+    // it's compared against baseline/threshold removes that single-sample noise
+    // while still tracking a genuine ~0.3-1.5s hand movement just fine.
+    private var smoothedY = 0f
+    private var isYFilterInit = false
+    private val jitterFilterAlpha = 0.30f
+
+    // Requires the threshold to be breached for several consecutive samples
+    // (not just one noisy blip) before counting it as a real detection in
+    // Omni-Room mode.
+    private var consecutiveAboveCount = 0
+    private val REQUIRED_CONSECUTIVE_SAMPLES = 3
+
+    // If the "magnet present" state (which freezes baseline adaptation) drags on
+    // far longer than a real hand-arc ever takes, it's drift/interference, not a
+    // magnet — so we slowly let the baseline catch back up instead of staying
+    // stuck reporting a ghost forever.
+    private var magnetPresentSinceMs: Long = 0L
+    private val STUCK_PRESENCE_MS = 4000L
+
     // Configuration parameters
     @Volatile var isRoomWideMode: Boolean = true // Ultra-high sensitivity for whole room detection
     @Volatile var fogLevel: Float = 0.35f // 0.0 (hypersensitive) to 1.0 (heavy stage shield)
@@ -352,18 +374,26 @@ class MagneticSensorEngine(
         // Phase 4: Stationary Phone Detecting Moving Magnetic Objects
         // Phone is resting flat on a surface or held steady in pocket.
         // Any change in the magnetic field is strictly an external moving magnet!
+
+        // Smooth the raw Y sample first. A single noisy magnetometer sample is
+        // often bigger than the room-wide detection threshold on its own, which
+        // is the main source of "ghost" strikes when nothing is actually moving.
+        if (!isYFilterInit) {
+            smoothedY = rawY
+            isYFilterInit = true
+        } else {
+            smoothedY += jitterFilterAlpha * (rawY - smoothedY)
+        }
+
         val dx = rawX - baseBx
-        val dy = rawY - baseBy
+        val dy = smoothedY - baseBy
         val dz = rawZ - baseBz
-        val vectorDelta = sqrt(dx * dx + dy * dy + dz * dz)
 
-        // Compute total scalar flux density magnitude
-        val currentScalar = sqrt(rawX * rawX + rawY * rawY + rawZ * rawZ)
-        val baseScalar = sqrt(baseBx * baseBx + baseBy * baseBy + baseBz * baseBz)
-        val scalarDelta = abs(currentScalar - baseScalar)
-
-        // A moving magnet causes distortion in both vector and scalar field
-        val deltaMag = max(vectorDelta, scalarDelta)
+        // Movement detection is restricted to the Y axis only (the phone's
+        // up/down axis in portrait), so only something moving up-and-down near
+        // the phone will register — sideways or front/back field changes are
+        // ignored entirely for detection purposes.
+        val deltaMag = abs(dy)
 
         // Instantaneous rate of change dB/dt
         val dtSec = if (lastTimestampNs > 0) {
@@ -391,10 +421,26 @@ class MagneticSensorEngine(
         // When an external magnetic disturbance is detected, freeze adaptation completely
         // so the moving magnet is never canceled out!
         val isMagnetPresent = deltaMag > (threshold * 0.45f)
-        val adaptationAlpha = if (isMagnetPresent) 0.0f else 0.003f
+
+        if (isMagnetPresent) {
+            if (magnetPresentSinceMs == 0L) magnetPresentSinceMs = nowMs
+        } else {
+            magnetPresentSinceMs = 0L
+        }
+        val presentDurationMs = if (magnetPresentSinceMs > 0L) nowMs - magnetPresentSinceMs else 0L
+
+        // A real hand-arc resolves within ~2s (see evaluateHandArcGesture). If the
+        // "present" state instead drags on far longer than that, it's not a magnet
+        // moving — it's drift or interference — so let the baseline slowly catch
+        // back up rather than staying stuck reporting a ghost indefinitely.
+        val adaptationAlpha = when {
+            !isMagnetPresent -> 0.003f
+            presentDurationMs > STUCK_PRESENCE_MS -> 0.01f
+            else -> 0.0f
+        }
 
         baseBx = (1f - adaptationAlpha) * baseBx + adaptationAlpha * rawX
-        baseBy = (1f - adaptationAlpha) * baseBy + adaptationAlpha * rawY
+        baseBy = (1f - adaptationAlpha) * baseBy + adaptationAlpha * smoothedY
         baseBz = (1f - adaptationAlpha) * baseBz + adaptationAlpha * rawZ
 
         // Append sample to gesture history for Kinematic Arc Recognition
@@ -410,7 +456,13 @@ class MagneticSensorEngine(
         val (isStrike, currentGesturePhase) = if (_locatorMode.value == LocatorMode.WHICH_HAND_ARC) {
             evaluateHandArcGesture(nowMs, threshold)
         } else {
-            val breached = deltaMag >= threshold || (deltaMag >= threshold * 0.65f && rateOfChange >= 0.85f)
+            val instantBreach = deltaMag >= threshold || (deltaMag >= threshold * 0.65f && rateOfChange >= 0.85f)
+            if (instantBreach) {
+                consecutiveAboveCount++
+            } else {
+                consecutiveAboveCount = 0
+            }
+            val breached = consecutiveAboveCount >= REQUIRED_CONSECUTIVE_SAMPLES
             Pair(breached, GesturePhase.IDLE)
         }
 
