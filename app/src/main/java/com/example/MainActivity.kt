@@ -116,6 +116,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val creatureState by viewModel.creatureState.collectAsStateWithLifecycle()
     val isPoweredOn by viewModel.isPoweredOn.collectAsStateWithLifecycle()
     val isRoomWideMode by viewModel.isRoomWideMode.collectAsStateWithLifecycle()
+    val locatorMode by viewModel.locatorMode.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val fogLevel by viewModel.fogLevel.collectAsStateWithLifecycle()
     val effectiveThreshold by viewModel.effectiveThreshold.collectAsStateWithLifecycle()
@@ -305,8 +306,10 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             hapticType = hapticType,
                             isPoweredOn = isPoweredOn,
                             isRoomWideMode = isRoomWideMode,
+                            locatorMode = locatorMode,
                             onTogglePower = { viewModel.togglePower() },
                             onToggleRoomWideMode = { viewModel.toggleRoomWideMode() },
+                            onToggleLocatorMode = { viewModel.toggleLocatorMode() },
                             onFogChange = { viewModel.setFogLevel(it) },
                             onTareBaseline = { viewModel.tareBaseline() },
                             onEnterStealth = { viewModel.setStealth(true) },

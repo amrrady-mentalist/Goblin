@@ -9,6 +9,7 @@ import com.example.data.local.GoblinRepository
 import com.example.data.local.VenueProfileEntity
 import com.example.domain.model.CreatureState
 import com.example.domain.model.HapticFeedbackType
+import com.example.domain.model.LocatorMode
 import com.example.domain.model.MagneticReading
 import com.example.domain.model.VibrationStrength
 import com.example.haptics.DiscreetHapticEngine
@@ -38,6 +39,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     val readingState: StateFlow<MagneticReading>
     val creatureState: StateFlow<CreatureState>
     val isPoweredOn: StateFlow<Boolean>
+    val locatorMode: StateFlow<LocatorMode>
 
     private val _isRoomWideMode = MutableStateFlow(true)
     val isRoomWideMode: StateFlow<Boolean> = _isRoomWideMode.asStateFlow()
@@ -88,6 +90,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         readingState = sensorEngine.readingState
         creatureState = sensorEngine.creatureState
         isPoweredOn = sensorEngine.isPoweredOn
+        locatorMode = sensorEngine.locatorMode
 
         venueProfiles = repository.profiles.stateIn(
             viewModelScope,
@@ -107,11 +110,12 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                 // Play 2 strong vibrations (or configured haptic sensation)
                 hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
 
-                // Send immediate local notification
+                // Send immediate local notification with Hand Arc context
                 notificationManager.sendImmediateDetectionNotification(
                     deltaMagnitude = reading.deltaMagnitude,
                     dominantDirection = reading.dominantDirection,
-                    isRoomWide = _isRoomWideMode.value
+                    isRoomWide = _isRoomWideMode.value,
+                    isHandArc = reading.isHandArcDetected || (sensorEngine.locatorMode.value == LocatorMode.WHICH_HAND_ARC)
                 )
 
                 // Log detection event
@@ -165,6 +169,14 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleRoomWideMode() {
         setRoomWideMode(!_isRoomWideMode.value)
+    }
+
+    fun setLocatorMode(mode: LocatorMode) {
+        sensorEngine.setLocatorMode(mode)
+    }
+
+    fun toggleLocatorMode() {
+        sensorEngine.toggleLocatorMode()
     }
 
     fun setTab(tab: PerformanceTab) {

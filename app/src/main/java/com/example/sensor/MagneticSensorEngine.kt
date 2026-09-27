@@ -6,6 +6,8 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import com.example.domain.model.CreatureState
+import com.example.domain.model.GesturePhase
+import com.example.domain.model.LocatorMode
 import com.example.domain.model.MagneticReading
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +61,30 @@ class MagneticSensorEngine(
     // Pocket proximity detection state
     private val _isPocketCovered = MutableStateFlow(false)
     val isPocketCovered: StateFlow<Boolean> = _isPocketCovered.asStateFlow()
+
+    // Locator Mode: Which-Hand Arc (10-30cm Up/Down) vs Omni-Room Scan
+    private val _locatorMode = MutableStateFlow(LocatorMode.WHICH_HAND_ARC)
+    val locatorMode: StateFlow<LocatorMode> = _locatorMode.asStateFlow()
+
+    fun setLocatorMode(mode: LocatorMode) {
+        _locatorMode.value = mode
+    }
+
+    fun toggleLocatorMode() {
+        _locatorMode.value = if (_locatorMode.value == LocatorMode.WHICH_HAND_ARC) {
+            LocatorMode.OMNI_ROOM
+        } else {
+            LocatorMode.WHICH_HAND_ARC
+        }
+    }
+
+    // Kinematic Gesture Buffer for detecting 10-30cm hand lift and return
+    private data class FluxHistorySample(
+        val timeMs: Long,
+        val deltaMag: Float
+    )
+    private val sampleHistory = ArrayList<FluxHistorySample>(140)
+    private var lastConfirmedGestureTimeMs = 0L
 
     val isSensorAvailable: Boolean get() = magnetometer != null
 
@@ -371,16 +397,28 @@ class MagneticSensorEngine(
         baseBy = (1f - adaptationAlpha) * baseBy + adaptationAlpha * rawY
         baseBz = (1f - adaptationAlpha) * baseBz + adaptationAlpha * rawZ
 
-        // Trigger condition for room-wide and faint movement:
-        // Trigger if delta magnitude reaches threshold, OR if there is an active magnetic rate transient (dB/dt)
-        // indicating a moving magnetic device across the room
-        val isStrike = deltaMag >= threshold || (deltaMag >= threshold * 0.65f && rateOfChange >= 0.85f)
+        // Append sample to gesture history for Kinematic Arc Recognition
+        sampleHistory.add(FluxHistorySample(nowMs, deltaMag))
+        while (sampleHistory.size > 140 || (sampleHistory.isNotEmpty() && nowMs - sampleHistory.first().timeMs > 2400L)) {
+            sampleHistory.removeAt(0)
+        }
+
+        // Evaluate detection according to locator mode:
+        // In WHICH_HAND_ARC mode: Specifically searches for a 10-30cm hand lift and return arc,
+        // ignoring static magnets, watches, and non-returning disturbances.
+        // In OMNI_ROOM mode: Standard threshold/transient trigger.
+        val (isStrike, currentGesturePhase) = if (_locatorMode.value == LocatorMode.WHICH_HAND_ARC) {
+            evaluateHandArcGesture(nowMs, threshold)
+        } else {
+            val breached = deltaMag >= threshold || (deltaMag >= threshold * 0.65f && rateOfChange >= 0.85f)
+            Pair(breached, GesturePhase.IDLE)
+        }
 
         // Determine Creature State
         val newState = when {
             isStrike -> CreatureState.STRIKING
-            deltaMag >= threshold * 0.70f || rateOfChange >= 0.60f -> CreatureState.AWAKE
-            deltaMag >= threshold * 0.35f || rateOfChange >= 0.30f -> CreatureState.STIRRING
+            currentGesturePhase == GesturePhase.HAND_APEX || currentGesturePhase == GesturePhase.HAND_RISING || deltaMag >= threshold * 0.70f -> CreatureState.AWAKE
+            currentGesturePhase == GesturePhase.HAND_RETURNING || deltaMag >= threshold * 0.35f -> CreatureState.STIRRING
             else -> CreatureState.SLUMBERING
         }
         _creatureState.value = newState
@@ -400,6 +438,8 @@ class MagneticSensorEngine(
             noiseFloor = noiseFloor,
             isPhoneMoving = false,
             isRoomAttuned = true,
+            gesturePhase = currentGesturePhase,
+            isHandArcDetected = isStrike,
             timestamp = nowMs
         )
         _readingState.value = reading
@@ -413,6 +453,94 @@ class MagneticSensorEngine(
                 }
             }
         }
+    }
+
+    /**
+     * Specifically evaluates the kinematic signature of a spectator's hand moving a hidden magnet
+     * up 10-30cm and then down.
+     * Rejects stationary magnets, smartwatch micro-jitter, and non-returning phone movements.
+     */
+    private fun evaluateHandArcGesture(nowMs: Long, threshold: Float): Pair<Boolean, GesturePhase> {
+        if (sampleHistory.size < 10) return Pair(false, GesturePhase.IDLE)
+
+        val latest = sampleHistory.last()
+        val latestDelta = latest.deltaMag
+
+        // Consider recent 1900ms window
+        val cutoff = nowMs - 1900L
+        val recent = sampleHistory.filter { it.timeMs >= cutoff }
+        if (recent.size < 8) return Pair(false, GesturePhase.IDLE)
+
+        // Find peak delta in the recent window
+        var peakIdx = -1
+        var peakVal = -1f
+        for (i in recent.indices) {
+            val s = recent[i]
+            if (s.deltaMag > peakVal) {
+                peakVal = s.deltaMag
+                peakIdx = i
+            }
+        }
+
+        if (peakIdx == -1) return Pair(false, GesturePhase.IDLE)
+        val peakSample = recent[peakIdx]
+        val peakAge = nowMs - peakSample.timeMs
+
+        // Dynamic Gesture Phase indication for live HUD/visual feedback
+        val currentPhase = when {
+            latestDelta < threshold * 0.35f -> GesturePhase.IDLE
+            peakAge < 150L && latestDelta >= threshold * 0.70f -> GesturePhase.HAND_APEX
+            latestDelta >= threshold * 0.40f && latestDelta > recent.first().deltaMag -> GesturePhase.HAND_RISING
+            latestDelta >= threshold * 0.30f && latestDelta < peakVal -> GesturePhase.HAND_RETURNING
+            else -> GesturePhase.IDLE
+        }
+
+        // Must cross gesture threshold (10-30cm movement threshold)
+        if (peakVal < threshold) return Pair(false, currentPhase)
+
+        // Peak must not be at the very latest sample (it must have completed apex and returned)
+        if (peakIdx >= recent.size - 2) return Pair(false, currentPhase)
+        // Peak should have occurred between 100ms and 950ms ago
+        if (peakAge !in 100L..950L) return Pair(false, currentPhase)
+
+        // Find baseline before peak (where the hand started moving up)
+        var startIdx = -1
+        var minBeforePeak = Float.MAX_VALUE
+        for (i in 0 until peakIdx) {
+            val s = recent[i]
+            val dtToPeak = peakSample.timeMs - s.timeMs
+            if (dtToPeak in 100L..950L && s.deltaMag < minBeforePeak) {
+                minBeforePeak = s.deltaMag
+                startIdx = i
+            }
+        }
+        if (startIdx == -1) return Pair(false, currentPhase)
+        val startSample = recent[startIdx]
+
+        // 1. Hand started near baseline (idle hand before raising)
+        val isStartNearBase = startSample.deltaMag <= (peakVal * 0.50f) || startSample.deltaMag <= (threshold * 0.50f)
+        if (!isStartNearBase) return Pair(false, currentPhase)
+
+        // 2. Hand returned back down to baseline (completed up-then-down movement)
+        val isEndNearBase = latestDelta <= (peakVal * 0.52f) || latestDelta <= (threshold * 0.55f)
+        if (!isEndNearBase) return Pair(false, currentPhase)
+
+        // 3. Human kinematic timing check:
+        // A hand lifting 10-30cm and lowering takes between 350ms and 1850ms total
+        val totalDuration = nowMs - startSample.timeMs
+        val riseDuration = peakSample.timeMs - startSample.timeMs
+        val fallDuration = nowMs - peakSample.timeMs
+
+        if (totalDuration !in 320L..1900L) return Pair(false, currentPhase)
+        if (riseDuration !in 100L..1000L) return Pair(false, currentPhase)
+        if (fallDuration !in 100L..1000L) return Pair(false, currentPhase)
+
+        // Debounce confirmed gestures so one stroke triggers exactly once
+        if (nowMs - lastConfirmedGestureTimeMs < 1200L) {
+            return Pair(false, GesturePhase.HAND_ARC_CONFIRMED)
+        }
+        lastConfirmedGestureTimeMs = nowMs
+        return Pair(true, GesturePhase.HAND_ARC_CONFIRMED)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}

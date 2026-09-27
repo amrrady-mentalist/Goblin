@@ -50,7 +50,8 @@ class DetectionNotificationManager(private val context: Context) {
     fun sendImmediateDetectionNotification(
         deltaMagnitude: Float,
         dominantDirection: MagneticDirection,
-        isRoomWide: Boolean = true
+        isRoomWide: Boolean = true,
+        isHandArc: Boolean = true
     ) {
         // Check POST_NOTIFICATIONS permission on Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -73,15 +74,24 @@ class DetectionNotificationManager(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = "⚠️ Magnetic Movement Detected!"
-        val rangeNote = if (isRoomWide) "across the room" else "nearby"
-        val body = String.format(
-            Locale.US,
-            "Faint magnetic movement %s: Δ %.2f µT (%s)",
-            rangeNote,
-            deltaMagnitude,
-            dominantDirection.label
-        )
+        val title = if (isHandArc) "✋ Hidden Magnetic Object Located!" else "⚠️ Magnetic Movement Detected!"
+        val body = if (isHandArc) {
+            String.format(
+                Locale.US,
+                "Hand moved up-then-down with hidden magnet! (Peak: Δ %.2f µT, %s)",
+                deltaMagnitude,
+                dominantDirection.label
+            )
+        } else {
+            val rangeNote = if (isRoomWide) "across the room" else "nearby"
+            String.format(
+                Locale.US,
+                "Faint magnetic movement %s: Δ %.2f µT (%s)",
+                rangeNote,
+                deltaMagnitude,
+                dominantDirection.label
+            )
+        }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)

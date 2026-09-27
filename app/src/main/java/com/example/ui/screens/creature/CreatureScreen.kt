@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Adjust
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CompassCalibration
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Security
@@ -58,7 +59,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.domain.model.CreatureState
+import com.example.domain.model.GesturePhase
 import com.example.domain.model.HapticFeedbackType
+import com.example.domain.model.LocatorMode
 import com.example.domain.model.MagneticReading
 import com.example.ui.components.OrganicEyeCanvas
 import com.example.ui.theme.ElectricCyan
@@ -82,8 +85,10 @@ fun CreatureScreen(
     hapticType: HapticFeedbackType,
     isPoweredOn: Boolean = true,
     isRoomWideMode: Boolean = true,
+    locatorMode: LocatorMode = LocatorMode.WHICH_HAND_ARC,
     onTogglePower: () -> Unit = {},
     onToggleRoomWideMode: () -> Unit = {},
+    onToggleLocatorMode: () -> Unit = {},
     onFogChange: (Float) -> Unit,
     onTareBaseline: () -> Unit,
     onEnterStealth: () -> Unit,
@@ -119,8 +124,15 @@ fun CreatureScreen(
             onTogglePower = onTogglePower
         )
 
-        // Room-Wide High-Sensitivity Toggle Card
+        // Which-Hand Locator Gesture Card & Settings
         if (isPoweredOn) {
+            WhichHandLocatorCard(
+                locatorMode = locatorMode,
+                reading = reading,
+                onToggleLocatorMode = onToggleLocatorMode
+            )
+
+            // Room-Wide High-Sensitivity Toggle Card
             RoomWideScanCard(
                 isRoomWideMode = isRoomWideMode,
                 effectiveThreshold = effectiveThreshold,
@@ -130,7 +142,8 @@ fun CreatureScreen(
             // Motion Immunity / Room Background Status Banner
             MotionShieldBanner(
                 isPhoneMoving = reading.isPhoneMoving,
-                creatureState = creatureState
+                creatureState = creatureState,
+                locatorMode = locatorMode
             )
         }
 
@@ -594,21 +607,25 @@ fun MasterPowerCard(
 @Composable
 fun MotionShieldBanner(
     isPhoneMoving: Boolean,
-    creatureState: CreatureState
+    creatureState: CreatureState,
+    locatorMode: LocatorMode = LocatorMode.WHICH_HAND_ARC
 ) {
     val bannerBg = when {
         isPhoneMoving -> StirringAmber.copy(alpha = 0.15f)
         creatureState == CreatureState.CALIBRATING -> Color(0xFF38BDF8).copy(alpha = 0.15f)
+        locatorMode == LocatorMode.WHICH_HAND_ARC -> StrikeMagenta.copy(alpha = 0.12f)
         else -> SlumberGreen.copy(alpha = 0.12f)
     }
     val borderColor = when {
         isPhoneMoving -> StirringAmber.copy(alpha = 0.45f)
         creatureState == CreatureState.CALIBRATING -> Color(0xFF38BDF8).copy(alpha = 0.45f)
+        locatorMode == LocatorMode.WHICH_HAND_ARC -> StrikeMagenta.copy(alpha = 0.45f)
         else -> SlumberGreen.copy(alpha = 0.3f)
     }
     val contentColor = when {
         isPhoneMoving -> StirringAmber
         creatureState == CreatureState.CALIBRATING -> Color(0xFF38BDF8)
+        locatorMode == LocatorMode.WHICH_HAND_ARC -> StrikeMagenta
         else -> SlumberGreen
     }
 
@@ -629,6 +646,7 @@ fun MotionShieldBanner(
                 imageVector = when {
                     isPhoneMoving -> Icons.Default.PhoneAndroid
                     creatureState == CreatureState.CALIBRATING -> Icons.Default.CompassCalibration
+                    locatorMode == LocatorMode.WHICH_HAND_ARC -> Icons.Default.PanTool
                     else -> Icons.Default.Security
                 },
                 contentDescription = "Shield Status",
@@ -641,6 +659,7 @@ fun MotionShieldBanner(
                     text = when {
                         isPhoneMoving -> "Self-Movement Ignored"
                         creatureState == CreatureState.CALIBRATING -> "Attuning to Room Field"
+                        locatorMode == LocatorMode.WHICH_HAND_ARC -> "Which-Hand Arc Filter Armed"
                         else -> "Stationary Guard Mode"
                     },
                     color = contentColor,
@@ -651,6 +670,7 @@ fun MotionShieldBanner(
                     text = when {
                         isPhoneMoving -> "Phone in motion: vibration alerts suppressed until settled flat."
                         creatureState == CreatureState.CALIBRATING -> "Mapping ambient room magnetism in background..."
+                        locatorMode == LocatorMode.WHICH_HAND_ARC -> "Smartwatches & stationary phones ignored. Only 10-30cm hand lift & return triggers."
                         else -> "Immune to phone handling. Ready to detect moving magnetic objects."
                     },
                     color = TextHigh.copy(alpha = 0.85f),
@@ -760,6 +780,141 @@ fun RoomWideScanCard(
                 ),
                 modifier = Modifier.testTag("room_wide_switch")
             )
+        }
+    }
+}
+
+@Composable
+fun WhichHandLocatorCard(
+    locatorMode: LocatorMode,
+    reading: MagneticReading,
+    onToggleLocatorMode: () -> Unit
+) {
+    val isWhichHandActive = locatorMode == LocatorMode.WHICH_HAND_ARC
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("which_hand_card")
+            .clickable { onToggleLocatorMode() },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isWhichHandActive) StrikeMagenta.copy(alpha = 0.12f) else MidnightCard
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.5.dp,
+            if (isWhichHandActive) StrikeMagenta.copy(alpha = 0.65f) else MidnightCardBorder
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isWhichHandActive) StrikeMagenta.copy(alpha = 0.25f) else Color(0xFF334155)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PanTool,
+                            contentDescription = "Hand Arc Mode",
+                            tint = if (isWhichHandActive) StrikeMagenta else TextMedium,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = if (isWhichHandActive) "WHICH-HAND LOCATOR: ACTIVE" else "MODE: OMNI ROOM SCAN",
+                            color = if (isWhichHandActive) StrikeMagenta else TextHigh,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = if (isWhichHandActive)
+                                "Filtered for 10-30cm hand lift & return"
+                            else
+                                "Continuous ambient scan • Tap to activate Which-Hand filter",
+                            color = TextMedium,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = isWhichHandActive,
+                    onCheckedChange = { onToggleLocatorMode() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = StrikeMagenta,
+                        checkedTrackColor = StrikeMagenta.copy(alpha = 0.35f),
+                        uncheckedThumbColor = Color(0xFF94A3B8),
+                        uncheckedTrackColor = Color(0xFF334155)
+                    ),
+                    modifier = Modifier.testTag("which_hand_switch")
+                )
+            }
+
+            // Real-time kinematic gesture status bar
+            if (isWhichHandActive) {
+                val phaseColor = when (reading.gesturePhase) {
+                    GesturePhase.IDLE -> TextMedium
+                    GesturePhase.HAND_RISING -> StirringAmber
+                    GesturePhase.HAND_APEX -> ElectricCyan
+                    GesturePhase.HAND_RETURNING -> ElectricCyan
+                    GesturePhase.HAND_ARC_CONFIRMED -> StrikeMagenta
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MidnightSurface.copy(alpha = 0.7f))
+                        .border(1.dp, phaseColor.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(phaseColor, CircleShape)
+                        )
+                        Text(
+                            text = reading.gesturePhase.label,
+                            color = phaseColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Text(
+                        text = "Ignores Smartwatches",
+                        color = TextDim,
+                        fontSize = 10.sp
+                    )
+                }
+            }
         }
     }
 }

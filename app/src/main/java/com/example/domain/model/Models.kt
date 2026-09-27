@@ -3,6 +3,27 @@ package com.example.domain.model
 import kotlin.math.abs
 import kotlin.math.sqrt
 
+enum class LocatorMode(val label: String, val shortName: String, val description: String) {
+    WHICH_HAND_ARC(
+        "Which-Hand Arc (10-30cm Up/Down)",
+        "Hand Arc",
+        "Specifically tuned to locate hidden magnet when spectator moves hand up then down (10-30cm). Rejects smartwatches & other phones."
+    ),
+    OMNI_ROOM(
+        "Omni-Directional Room Scan",
+        "Omni Scan",
+        "Broadband room detection for any magnetic movement."
+    )
+}
+
+enum class GesturePhase(val label: String) {
+    IDLE("Idle • Waiting for hand movement"),
+    HAND_RISING("Hand Rising (10-30cm)..."),
+    HAND_APEX("Apex reached"),
+    HAND_RETURNING("Hand Returning down..."),
+    HAND_ARC_CONFIRMED("Hand Arc Detected!")
+}
+
 enum class CreatureState(val label: String, val subtitle: String) {
     DORMANT("Powered Off", "Sensors in standby. Tap Power to turn on."),
     CALIBRATING("Attuning to Room", "Learning ambient room magnetism..."),
@@ -53,6 +74,8 @@ data class MagneticReading(
     val noiseFloor: Float = 0.5f,
     val isPhoneMoving: Boolean = false,
     val isRoomAttuned: Boolean = true,
+    val gesturePhase: GesturePhase = GesturePhase.IDLE,
+    val isHandArcDetected: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 ) {
     val totalFieldMagnitude: Float
