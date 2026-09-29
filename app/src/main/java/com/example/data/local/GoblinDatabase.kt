@@ -60,6 +60,7 @@ abstract class GoblinDatabase : RoomDatabase() {
                     GoblinDatabase::class.java,
                     "goblin_database"
                 )
+                .fallbackToDestructiveMigration()
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

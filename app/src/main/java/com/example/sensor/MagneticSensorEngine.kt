@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import com.example.domain.model.CreatureState
 import com.example.domain.model.GesturePhase
 import com.example.domain.model.LocatorMode
@@ -35,8 +36,8 @@ class MagneticSensorEngine(
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
 
     private val magnetometer: Sensor? = sensorManager?.let { sm ->
-        sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED)
-            ?: sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+            ?: sm.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED)
     }
     private val accelerometer: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val gyroscope: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
@@ -187,23 +188,37 @@ class MagneticSensorEngine(
             }
         }
         val handler = sensorHandler
-        magnetometer?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, handler)
-        }
-        accelerometer?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, handler)
-        }
-        gyroscope?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, handler)
-        }
-        proximitySensor?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL, handler)
+        // Magnetometer polled at SENSOR_DELAY_FASTEST as requested, with fallback to SENSOR_DELAY_GAME
+        registerSensorSafely(magnetometer, SensorManager.SENSOR_DELAY_FASTEST, handler)
+        // Inertial motion sensors (detecting picking up / tilting phone)
+        registerSensorSafely(accelerometer, SensorManager.SENSOR_DELAY_GAME, handler)
+        registerSensorSafely(gyroscope, SensorManager.SENSOR_DELAY_GAME, handler)
+        registerSensorSafely(proximitySensor, SensorManager.SENSOR_DELAY_NORMAL, handler)
+    }
+
+    private fun registerSensorSafely(sensor: Sensor?, preferredDelay: Int, handler: Handler?) {
+        if (sensor == null || sensorManager == null) return
+        try {
+            sensorManager.registerListener(this, sensor, preferredDelay, handler)
+        } catch (secEx: SecurityException) {
+            Log.w("MagneticSensorEngine", "HIGH_SAMPLING_RATE_SENSORS restricted for ${sensor.name}, falling back to GAME delay", secEx)
+            try {
+                sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME, handler)
+            } catch (fallbackEx: Exception) {
+                Log.e("MagneticSensorEngine", "Fallback sensor registration failed for ${sensor.name}", fallbackEx)
+            }
+        } catch (e: Exception) {
+            Log.e("MagneticSensorEngine", "Could not register sensor ${sensor.name}", e)
         }
     }
 
     fun stopListening() {
-        sensorManager?.unregisterListener(this)
-        sensorThread?.quitSafely()
+        try {
+            sensorManager?.unregisterListener(this)
+        } catch (_: Exception) {}
+        try {
+            sensorThread?.quitSafely()
+        } catch (_: Exception) {}
         sensorThread = null
         sensorHandler = null
     }
