@@ -54,9 +54,88 @@ class MagneticSensorEngine(
     private val gyroscope: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val proximitySensor: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
 
-    // Power State Flow (On / Off)
+    // Power State Flow (On / Off - "Activate sensor")
     private val _isPoweredOn = MutableStateFlow(true)
     val isPoweredOn: StateFlow<Boolean> = _isPoweredOn.asStateFlow()
+
+    // 1. Start Trick (Running state)
+    private val _isTrickRunning = MutableStateFlow(true)
+    val isTrickRunning: StateFlow<Boolean> = _isTrickRunning.asStateFlow()
+
+    fun setTrickRunning(running: Boolean) {
+        if (!_isPoweredOn.value && running) {
+            setPower(true)
+        }
+        _isTrickRunning.value = running
+    }
+
+    fun toggleTrick() {
+        setTrickRunning(!_isTrickRunning.value)
+    }
+
+    // 2. Sensitivity (Stationary sensitivity, default 1.9, step 0.1, range 0.5 to 10.0)
+    private val _sensitivity = MutableStateFlow(1.9f)
+    val sensitivity: StateFlow<Float> = _sensitivity.asStateFlow()
+
+    fun setSensitivity(value: Float) {
+        _sensitivity.value = (value * 10f).toInt() / 10f
+    }
+
+    // 3. Adaptative Sensitivity (Moving / walk sensitivity, default 8, step 1, range 1 to 20)
+    private val _adaptiveSensitivity = MutableStateFlow(8)
+    val adaptiveSensitivity: StateFlow<Int> = _adaptiveSensitivity.asStateFlow()
+
+    fun setAdaptiveSensitivity(value: Int) {
+        _adaptiveSensitivity.value = value.coerceIn(1, 20)
+    }
+
+    // 4. Smart Alarm (Saturation Warning, default enabled, threshold 150 uT)
+    private val _isSmartAlarmEnabled = MutableStateFlow(true)
+    val isSmartAlarmEnabled: StateFlow<Boolean> = _isSmartAlarmEnabled.asStateFlow()
+
+    private val _smartAlarmThreshold = MutableStateFlow(150f)
+    val smartAlarmThreshold: StateFlow<Float> = _smartAlarmThreshold.asStateFlow()
+
+    fun setSmartAlarmEnabled(enabled: Boolean) {
+        _isSmartAlarmEnabled.value = enabled
+    }
+
+    fun setSmartAlarmThreshold(thresh: Float) {
+        _smartAlarmThreshold.value = thresh.coerceIn(50f, 600f)
+    }
+
+    // 5. Sleeping Mode (Covert magnet wakeup)
+    private val _isSleepingMode = MutableStateFlow(false)
+    val isSleepingMode: StateFlow<Boolean> = _isSleepingMode.asStateFlow()
+
+    fun setSleepingMode(sleeping: Boolean) {
+        _isSleepingMode.value = sleeping
+    }
+
+    fun toggleSleepingMode() {
+        _isSleepingMode.value = !_isSleepingMode.value
+    }
+
+    // 6. Live MicroTesla readout (e.g. 32 uT)
+    private val _liveMicroTesla = MutableStateFlow(32)
+    val liveMicroTesla: StateFlow<Int> = _liveMicroTesla.asStateFlow()
+
+    // 7. Event flows for Smart Alarm & Sleeping Wake
+    private val _smartAlarmEvents = MutableSharedFlow<Float>(
+        replay = 0,
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val smartAlarmEvents: SharedFlow<Float> = _smartAlarmEvents.asSharedFlow()
+
+    private val _sleepWakeEvents = MutableSharedFlow<Unit>(
+        replay = 0,
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val sleepWakeEvents: SharedFlow<Unit> = _sleepWakeEvents.asSharedFlow()
+
+    private var lastSmartAlarmTimeMs = 0L
 
     // Current State Flow
     private val _readingState = MutableStateFlow(MagneticReading())
@@ -270,23 +349,19 @@ class MagneticSensorEngine(
         _creatureState.value = CreatureState.SLUMBERING
     }
 
+    val isPhonePhysicallyMoving: Boolean
+        get() = (System.currentTimeMillis() - lastMotionTimeMs) < MOTION_SETTLE_WINDOW_MS
+
     /**
-     * Dynamic threshold calculation based on LocatorMode, Fog setting, and ambient noise floor.
+     * Dynamic threshold calculation based on Sensitivity (stationary) or Adaptive Sensitivity (moving).
      */
     fun calculateEffectiveThreshold(): Float {
-        return when (_locatorMode.value) {
-            LocatorMode.PROXIMITY_50CM -> {
-                val base = 0.70f + (2.20f * fogLevel)
-                max(0.65f, base + (noiseFloor * 0.8f))
-            }
-            LocatorMode.EARBUD_DETECTOR -> {
-                val base = 0.55f + (1.60f * fogLevel)
-                max(0.50f, base + (noiseFloor * 0.6f))
-            }
-            LocatorMode.Y_AXIS_VERTICAL -> {
-                val base = 0.60f + (customBaseThreshold * 0.40f * fogLevel)
-                max(0.55f, base + (yNoiseFloor * 1.5f))
-            }
+        val sens = _sensitivity.value
+        val adaptSens = _adaptiveSensitivity.value
+        return if (isPhonePhysicallyMoving) {
+            max(1.0f, 18.0f / adaptSens.toFloat())
+        } else {
+            max(0.35f, 3.8f / sens)
         }
     }
 
@@ -341,6 +416,19 @@ class MagneticSensorEngine(
         val rawZ = event.values[2]
         val rawScalar = sqrt(rawX * rawX + rawY * rawY + rawZ * rawZ)
         val nowMs = System.currentTimeMillis()
+
+        // Update live MicroTesla value
+        _liveMicroTesla.value = rawScalar.toInt()
+
+        // Smart Alarm Saturation Check
+        if (_isSmartAlarmEnabled.value && rawScalar >= _smartAlarmThreshold.value) {
+            if (nowMs - lastSmartAlarmTimeMs >= 2500L) {
+                lastSmartAlarmTimeMs = nowMs
+                externalScope.launch(Dispatchers.Default) {
+                    _smartAlarmEvents.emit(rawScalar)
+                }
+            }
+        }
 
         // 1. Low-Pass Smoothing: Completely eliminates hardware white noise jitter
         if (!isBaselineInitialized) {
@@ -512,6 +600,33 @@ class MagneticSensorEngine(
             }
         }
 
+        // 6b. Sleeping Mode Handling:
+        // In sleeping mode, normal alerts are dormant until a magnet is brought close to wake the app
+        if (_isSleepingMode.value) {
+            if (rawScalar > 80f || disturbance > 20f) {
+                _isSleepingMode.value = false
+                _isTrickRunning.value = true
+                externalScope.launch(Dispatchers.Default) {
+                    _sleepWakeEvents.emit(Unit)
+                }
+            }
+            if ((nowMs - lastUiEmitTimeMs) >= 20L) {
+                lastUiEmitTimeMs = nowMs
+                _readingState.value = MagneticReading(
+                    x = smoothBx,
+                    y = smoothBy,
+                    z = smoothBz,
+                    baselineX = baseBx,
+                    baselineY = baseBy,
+                    baselineZ = baseBz,
+                    deltaMagnitude = disturbance,
+                    scentStatusText = "Sleeping Mode: Bring magnet close to wake",
+                    timestamp = nowMs
+                )
+            }
+            return
+        }
+
         // 7. Threshold Evaluation
         val threshold = calculateEffectiveThreshold()
 
@@ -533,10 +648,10 @@ class MagneticSensorEngine(
             }
         }
 
-        val isStrike = meetsModeCriteria &&
+        val isStrike = _isTrickRunning.value &&
+                meetsModeCriteria &&
                 isWithinTargetWindow &&
                 !isCalibratingRoom &&
-                !isDevicePhysicallyMoving &&
                 (nowMs >= hapticPulseBlankUntilMs)
 
         // Status text

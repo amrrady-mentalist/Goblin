@@ -25,9 +25,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class PerformanceTab {
+    SETTINGS,
     CREATURE,
     MENTALIST_HUD,
-    LOG_REHEARSAL
+    LOG_REHEARSAL,
+    TUTORIAL
 }
 
 class GoblinViewModel(application: Application) : AndroidViewModel(application) {
@@ -42,10 +44,19 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     val isPoweredOn: StateFlow<Boolean>
     val locatorMode: StateFlow<LocatorMode>
 
+    // Settings from Screenshot
+    val isTrickRunning: StateFlow<Boolean>
+    val sensitivity: StateFlow<Float>
+    val adaptiveSensitivity: StateFlow<Int>
+    val isSmartAlarmEnabled: StateFlow<Boolean>
+    val smartAlarmThreshold: StateFlow<Float>
+    val isSleepingMode: StateFlow<Boolean>
+    val liveMicroTesla: StateFlow<Int>
+
     private val _isRoomWideMode = MutableStateFlow(true)
     val isRoomWideMode: StateFlow<Boolean> = _isRoomWideMode.asStateFlow()
 
-    private val _currentTab = MutableStateFlow(PerformanceTab.CREATURE)
+    private val _currentTab = MutableStateFlow(PerformanceTab.SETTINGS)
     val currentTab: StateFlow<PerformanceTab> = _currentTab.asStateFlow()
 
     private val _fogLevel = MutableStateFlow(0.35f)
@@ -98,6 +109,14 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         creatureState = sensorEngine.creatureState
         isPoweredOn = sensorEngine.isPoweredOn
         locatorMode = sensorEngine.locatorMode
+
+        isTrickRunning = sensorEngine.isTrickRunning
+        sensitivity = sensorEngine.sensitivity
+        adaptiveSensitivity = sensorEngine.adaptiveSensitivity
+        isSmartAlarmEnabled = sensorEngine.isSmartAlarmEnabled
+        smartAlarmThreshold = sensorEngine.smartAlarmThreshold
+        isSleepingMode = sensorEngine.isSleepingMode
+        liveMicroTesla = sensorEngine.liveMicroTesla
 
         venueProfiles = repository.profiles.stateIn(
             viewModelScope,
@@ -162,6 +181,52 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                 _effectiveThreshold.value = sensorEngine.calculateEffectiveThreshold()
             }
         }
+
+        // Smart Alarm saturation warning listener
+        viewModelScope.launch {
+            sensorEngine.smartAlarmEvents.collectLatest {
+                hapticEngine.playSaturationAlarm()
+            }
+        }
+
+        // Sleeping mode wake-up confirmation listener
+        viewModelScope.launch {
+            sensorEngine.sleepWakeEvents.collectLatest {
+                hapticEngine.playWakeConfirmation()
+            }
+        }
+    }
+
+    fun setTrickRunning(running: Boolean) {
+        sensorEngine.setTrickRunning(running)
+    }
+
+    fun toggleTrick() {
+        sensorEngine.toggleTrick()
+    }
+
+    fun setSensitivity(value: Float) {
+        sensorEngine.setSensitivity(value)
+    }
+
+    fun setAdaptiveSensitivity(value: Int) {
+        sensorEngine.setAdaptiveSensitivity(value)
+    }
+
+    fun setSmartAlarmEnabled(enabled: Boolean) {
+        sensorEngine.setSmartAlarmEnabled(enabled)
+    }
+
+    fun setSmartAlarmThreshold(thresh: Float) {
+        sensorEngine.setSmartAlarmThreshold(thresh)
+    }
+
+    fun setSleepingMode(sleeping: Boolean) {
+        sensorEngine.setSleepingMode(sleeping)
+    }
+
+    fun toggleSleepingMode() {
+        sensorEngine.toggleSleepingMode()
     }
 
     fun setPower(on: Boolean) {

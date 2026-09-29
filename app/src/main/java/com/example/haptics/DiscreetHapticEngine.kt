@@ -126,4 +126,32 @@ class DiscreetHapticEngine(private val context: Context) {
         playStrikeFeedback(deltaMagnitude = 8f, rateOfChange = 15f)
         hapticType = savedType
     }
+
+    fun playSaturationAlarm() {
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        // Stutter warning for smart alarm saturation: 80ms on, 80ms off, 80ms on, 80ms off, 120ms on
+        val timings = longArrayOf(0, 80, 80, 80, 80, 120)
+        val amplitudes = intArrayOf(0, 200, 0, 200, 0, 255)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vib.hasAmplitudeControl()) {
+            vib.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(longArrayOf(0, 80, 80, 80, 80, 120), -1)
+        }
+    }
+
+    fun playWakeConfirmation() {
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        // 3 distinct crisp pulses confirming wake up from sleeping mode
+        val timings = longArrayOf(0, 100, 70, 100, 70, 160)
+        val amplitudes = intArrayOf(0, 180, 0, 220, 0, 255)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vib.hasAmplitudeControl()) {
+            vib.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(longArrayOf(0, 100, 70, 100, 70, 160), -1)
+        }
+    }
 }

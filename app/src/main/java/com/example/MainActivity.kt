@@ -37,7 +37,9 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,7 +70,9 @@ import com.example.ui.PerformanceTab
 import com.example.ui.screens.creature.CreatureScreen
 import com.example.ui.screens.hud.MentalistHudScreen
 import com.example.ui.screens.log.EventLogScreen
+import com.example.ui.screens.settings.ExactSettingsScreen
 import com.example.ui.screens.settings.SettingsSheet
+import com.example.ui.screens.settings.TutorialScreen
 import com.example.ui.screens.stealth.StealthOverlay
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.MidnightBg
@@ -138,6 +142,15 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val venueProfiles by viewModel.venueProfiles.collectAsStateWithLifecycle()
     val recentEvents by viewModel.recentEvents.collectAsStateWithLifecycle()
 
+    // Settings matching screenshot
+    val isTrickRunning by viewModel.isTrickRunning.collectAsStateWithLifecycle()
+    val sensitivity by viewModel.sensitivity.collectAsStateWithLifecycle()
+    val adaptiveSensitivity by viewModel.adaptiveSensitivity.collectAsStateWithLifecycle()
+    val isSmartAlarmEnabled by viewModel.isSmartAlarmEnabled.collectAsStateWithLifecycle()
+    val smartAlarmThreshold by viewModel.smartAlarmThreshold.collectAsStateWithLifecycle()
+    val isSleepingMode by viewModel.isSleepingMode.collectAsStateWithLifecycle()
+    val liveMicroTesla by viewModel.liveMicroTesla.collectAsStateWithLifecycle()
+
     // Immediate Notification Permission Request for Android 13+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         val permissionLauncher = rememberLauncherForActivityResult(
@@ -156,7 +169,8 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
             modifier = Modifier.fillMaxSize(),
             containerColor = MidnightBg,
             topBar = {
-                TopAppBar(
+                if (currentTab != PerformanceTab.SETTINGS && currentTab != PerformanceTab.TUTORIAL) {
+                    TopAppBar(
                     title = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -218,25 +232,46 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                         }
 
                         IconButton(
-                            onClick = { showSettingsSheet = true },
+                            onClick = { viewModel.setTab(PerformanceTab.SETTINGS) },
                             modifier = Modifier.testTag("settings_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = "Settings and Presets",
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
                                 tint = TextHigh
                             )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MidnightBg)
                 )
-            },
+            }
+        },
             bottomBar = {
                 NavigationBar(
                     containerColor = MidnightSurface,
                     contentColor = TextMedium,
                     modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
                 ) {
+                    NavigationBarItem(
+                        selected = currentTab == PerformanceTab.SETTINGS,
+                        onClick = { viewModel.setTab(PerformanceTab.SETTINGS) },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings"
+                            )
+                        },
+                        label = { Text("Settings") },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MidnightBg,
+                            selectedTextColor = Color(0xFFEAB308),
+                            indicatorColor = Color(0xFFEAB308),
+                            unselectedIconColor = TextDim,
+                            unselectedTextColor = TextDim
+                        ),
+                        modifier = Modifier.testTag("tab_settings")
+                    )
+
                     NavigationBarItem(
                         selected = currentTab == PerformanceTab.CREATURE,
                         onClick = { viewModel.setTab(PerformanceTab.CREATURE) },
@@ -266,7 +301,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                                 contentDescription = "Telemetry Scope"
                             )
                         },
-                        label = { Text("Scope HUD") },
+                        label = { Text("Scope") },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MidnightBg,
                             selectedTextColor = ElectricCyan,
@@ -278,23 +313,23 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                     )
 
                     NavigationBarItem(
-                        selected = currentTab == PerformanceTab.LOG_REHEARSAL,
-                        onClick = { viewModel.setTab(PerformanceTab.LOG_REHEARSAL) },
+                        selected = currentTab == PerformanceTab.TUTORIAL,
+                        onClick = { viewModel.setTab(PerformanceTab.TUTORIAL) },
                         icon = {
                             Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = "Rehearsal Log"
+                                imageVector = Icons.Default.VideoLibrary,
+                                contentDescription = "Tutorial"
                             )
                         },
-                        label = { Text("Cue Log") },
+                        label = { Text("Tutorial") },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MidnightBg,
-                            selectedTextColor = ElectricCyan,
-                            indicatorColor = ElectricCyan,
+                            selectedTextColor = Color(0xFFEAB308),
+                            indicatorColor = Color(0xFFEAB308),
                             unselectedIconColor = TextDim,
                             unselectedTextColor = TextDim
                         ),
-                        modifier = Modifier.testTag("tab_log")
+                        modifier = Modifier.testTag("tab_tutorial")
                     )
                 }
             }
@@ -305,6 +340,34 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                     .padding(innerPadding)
             ) {
                 when (currentTab) {
+                    PerformanceTab.SETTINGS -> {
+                        ExactSettingsScreen(
+                            isTrickRunning = isTrickRunning,
+                            isSensorActivated = isPoweredOn,
+                            sensitivity = sensitivity,
+                            adaptiveSensitivity = adaptiveSensitivity,
+                            isSmartAlarmEnabled = isSmartAlarmEnabled,
+                            smartAlarmThreshold = smartAlarmThreshold,
+                            isSleepingMode = isSleepingMode,
+                            liveMicroTesla = liveMicroTesla,
+                            onToggleTrick = { viewModel.toggleTrick() },
+                            onToggleActivateSensor = { viewModel.togglePower() },
+                            onSensitivityChange = { viewModel.setSensitivity(it) },
+                            onAdaptiveSensitivityChange = { viewModel.setAdaptiveSensitivity(it) },
+                            onToggleSmartAlarm = { viewModel.setSmartAlarmEnabled(!isSmartAlarmEnabled) },
+                            onSmartAlarmThresholdChange = { viewModel.setSmartAlarmThreshold(it) },
+                            onToggleSleepingMode = { viewModel.toggleSleepingMode() },
+                            onNavigateBack = { viewModel.setTab(PerformanceTab.CREATURE) },
+                            onOpenTutorial = { viewModel.setTab(PerformanceTab.TUTORIAL) }
+                        )
+                    }
+
+                    PerformanceTab.TUTORIAL -> {
+                        TutorialScreen(
+                            onNavigateBack = { viewModel.setTab(PerformanceTab.SETTINGS) }
+                        )
+                    }
+
                     PerformanceTab.CREATURE -> {
                         CreatureScreen(
                             creatureState = creatureState,
@@ -318,7 +381,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onFogChange = { viewModel.setFogLevel(it) },
                             onSelectRumbleMode = { viewModel.setRumbleMode(it) },
                             onToggleStealth = { viewModel.setStealth(!isStealthActive) },
-                            onOpenSettings = { showSettingsSheet = true },
+                            onOpenSettings = { viewModel.setTab(PerformanceTab.SETTINGS) },
                             onTareBaseline = { viewModel.tareBaseline() },
                             onTestHaptic = { viewModel.testHaptic() }
                         )
