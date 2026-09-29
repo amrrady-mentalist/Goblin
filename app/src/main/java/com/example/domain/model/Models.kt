@@ -4,24 +4,35 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 enum class LocatorMode(val label: String, val shortName: String, val description: String) {
-    WHICH_HAND_ARC(
-        "Which-Hand Arc (10-30cm Up/Down)",
-        "Hand Arc",
-        "Specifically tuned to locate hidden magnet when spectator moves hand up then down (10-30cm). Rejects smartwatches & other phones."
+    PROXIMITY_50CM(
+        "Perimeter Proximity (0-50 cm)",
+        "0-50 cm",
+        "Detects any magnetic object moving within 0 to 50 cm around the phone."
     ),
-    OMNI_ROOM(
-        "Omni-Directional Room Scan",
-        "Omni Scan",
-        "Broadband room detection for any magnetic movement."
+    EARBUD_DETECTOR(
+        "Earbud / AirPods Trick (0-40 cm)",
+        "Earbuds",
+        "Calibrated specifically for wireless earbud neodymium magnets (AirPods, Galaxy Buds)."
+    ),
+    Y_AXIS_VERTICAL(
+        "Strict Up/Down Y-Axis",
+        "Up/Down",
+        "Strictly restricted to vertical lifting motions along the Y-axis."
     )
 }
 
+enum class RumbleMode(val label: String, val subtitle: String, val hapticType: HapticFeedbackType) {
+    FOOTSTEPS("Footsteps", "Haptic taps (quieter).", HapticFeedbackType.GHOST_TAP),
+    STOMPS("Stomps", "Heavy pulses (deep pocket).", HapticFeedbackType.DOUBLE_STRONG),
+    SILENCE("Silence", "Visual only (no vibration).", HapticFeedbackType.MUTE)
+}
+
 enum class GesturePhase(val label: String) {
-    IDLE("Idle • Waiting for hand movement"),
-    HAND_RISING("Hand Rising (10-30cm)..."),
+    IDLE("The goblin sleeps."),
+    HAND_RISING("Scent rising..."),
     HAND_APEX("Apex reached"),
-    HAND_RETURNING("Hand Returning down..."),
-    HAND_ARC_CONFIRMED("Hand Arc Detected!")
+    HAND_RETURNING("Returning..."),
+    HAND_ARC_CONFIRMED("Movement detected!")
 }
 
 enum class CreatureState(val label: String, val subtitle: String) {
@@ -76,10 +87,16 @@ data class MagneticReading(
     val isRoomAttuned: Boolean = true,
     val gesturePhase: GesturePhase = GesturePhase.IDLE,
     val isHandArcDetected: Boolean = false,
+    val scentStrengthPercent: Int = 0,
+    val scentStatusText: String = "Dormant",
+    val estimatedDistanceCm: Int = -1,
     val timestamp: Long = System.currentTimeMillis()
 ) {
     val totalFieldMagnitude: Float
         get() = sqrt(x * x + y * y + z * z)
+
+    val isYAxisDominant: Boolean
+        get() = abs(deltaY) > abs(deltaX) && abs(deltaY) > abs(deltaZ)
 
     val dominantDirection: MagneticDirection
         get() {

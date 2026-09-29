@@ -11,6 +11,7 @@ import com.example.domain.model.CreatureState
 import com.example.domain.model.HapticFeedbackType
 import com.example.domain.model.LocatorMode
 import com.example.domain.model.MagneticReading
+import com.example.domain.model.RumbleMode
 import com.example.domain.model.VibrationStrength
 import com.example.haptics.DiscreetHapticEngine
 import com.example.notification.DetectionNotificationManager
@@ -58,6 +59,12 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _hapticType = MutableStateFlow(HapticFeedbackType.DOUBLE_STRONG)
     val hapticType: StateFlow<HapticFeedbackType> = _hapticType.asStateFlow()
+
+    private val _rumbleMode = MutableStateFlow(RumbleMode.STOMPS)
+    val rumbleMode: StateFlow<RumbleMode> = _rumbleMode.asStateFlow()
+
+    val targetMinStrengthPercent = MutableStateFlow(0)
+    val targetMaxStrengthPercent = MutableStateFlow(100)
 
     private val _vibrationStrength = MutableStateFlow(VibrationStrength.MEDIUM)
     val vibrationStrength: StateFlow<VibrationStrength> = _vibrationStrength.asStateFlow()
@@ -119,7 +126,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     deltaMagnitude = reading.deltaMagnitude,
                     dominantDirection = reading.dominantDirection,
                     isRoomWide = _isRoomWideMode.value,
-                    isHandArc = reading.isHandArcDetected || (sensorEngine.locatorMode.value == LocatorMode.WHICH_HAND_ARC)
+                    isHandArc = reading.isHandArcDetected || (sensorEngine.locatorMode.value == LocatorMode.Y_AXIS_VERTICAL)
                 )
 
                 // Log detection event
@@ -181,6 +188,21 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleLocatorMode() {
         sensorEngine.toggleLocatorMode()
+    }
+
+    fun setRumbleMode(mode: RumbleMode) {
+        _rumbleMode.value = mode
+        _hapticType.value = mode.hapticType
+        hapticEngine.hapticType = mode.hapticType
+    }
+
+    fun setTargetStrengthWindow(minPercent: Int, maxPercent: Int) {
+        val minP = minPercent.coerceIn(0, 100)
+        val maxP = maxPercent.coerceIn(minP, 100)
+        targetMinStrengthPercent.value = minP
+        targetMaxStrengthPercent.value = maxP
+        sensorEngine.targetMinStrengthPercent = minP
+        sensorEngine.targetMaxStrengthPercent = maxP
     }
 
     fun setTab(tab: PerformanceTab) {

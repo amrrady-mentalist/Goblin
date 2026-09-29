@@ -62,8 +62,8 @@ class MagneticSensorEngine(
     private val _isPocketCovered = MutableStateFlow(false)
     val isPocketCovered: StateFlow<Boolean> = _isPocketCovered.asStateFlow()
 
-    // Locator Mode: Which-Hand Arc (10-30cm Up/Down) vs Omni-Room Scan
-    private val _locatorMode = MutableStateFlow(LocatorMode.WHICH_HAND_ARC)
+    // Locator Mode: Proximity 0-50cm, Earbud Detector, or Strict Y-Axis
+    private val _locatorMode = MutableStateFlow(LocatorMode.PROXIMITY_50CM)
     val locatorMode: StateFlow<LocatorMode> = _locatorMode.asStateFlow()
 
     fun setLocatorMode(mode: LocatorMode) {
@@ -71,16 +71,30 @@ class MagneticSensorEngine(
     }
 
     fun toggleLocatorMode() {
-        _locatorMode.value = if (_locatorMode.value == LocatorMode.WHICH_HAND_ARC) {
-            LocatorMode.OMNI_ROOM
-        } else {
-            LocatorMode.WHICH_HAND_ARC
+        _locatorMode.value = when (_locatorMode.value) {
+            LocatorMode.PROXIMITY_50CM -> LocatorMode.EARBUD_DETECTOR
+            LocatorMode.EARBUD_DETECTOR -> LocatorMode.Y_AXIS_VERTICAL
+            LocatorMode.Y_AXIS_VERTICAL -> LocatorMode.PROXIMITY_50CM
         }
     }
 
-    // Kinematic Gesture Buffer for detecting 10-30cm hand lift and return
+    // Target Magnetic Field Strength Window (0% to 100%)
+    @Volatile var targetMinStrengthPercent: Int = 0
+    @Volatile var targetMaxStrengthPercent: Int = 100
+
+    // Anti-Ghosting Haptic Motor Blanking
+    private var hapticPulseBlankUntilMs = 0L
+
+    fun notifyHapticPulse(durationMs: Long = 450L) {
+        hapticPulseBlankUntilMs = System.currentTimeMillis() + durationMs
+    }
+
+    // Kinematic Gesture Buffer specifically recording vertical Y-axis and lateral axes
     private data class FluxHistorySample(
         val timeMs: Long,
+        val dy: Float,
+        val dx: Float,
+        val dz: Float,
         val deltaMag: Float
     )
     private val sampleHistory = ArrayList<FluxHistorySample>(140)
@@ -107,9 +121,14 @@ class MagneticSensorEngine(
     private val MOTION_SETTLE_WINDOW_MS = 650L // Wait 650ms after motion stops before arming
 
     // Rolling noise floor estimation
-    private var noiseFloor = 0.6f
+    private var noiseFloor = 0.5f
     private val recentDeltas = FloatArray(16) { 0.2f }
     private var deltaIndex = 0
+
+    // Strict Y-Axis noise floor tracking
+    private var yNoiseFloor = 0.20f
+    private val recentYDeltas = FloatArray(16) { 0.15f }
+    private var yDeltaIndex = 0
 
     // Timing and rate of change
     private var lastTimestampNs: Long = 0
@@ -117,42 +136,6 @@ class MagneticSensorEngine(
 
     // Strike debounce
     private var lastStrikeTimeMs: Long = 0L
-
-    // Low-pass filtered Y-axis reading. A single noisy raw sample is enough to
-    // breach the very low room-wide thresholds used below, which is what causes
-    // "ghost" triggers with nothing actually moving. Smoothing the signal before
-    // it's compared against baseline/threshold removes that single-sample noise
-    // while still tracking a genuine ~0.3-1.5s hand movement just fine.
-    private var smoothedY = 0f
-    private var isYFilterInit = false
-    private val jitterFilterAlpha = 0.20f
-
-    // In Omni-Room mode, requires the threshold to be breached continuously for
-    // a minimum stretch of real time (not a fixed sample count, since sensor
-    // delivery rate can vary) before counting it as a real detection.
-    private var omniAboveSinceMs: Long = 0L
-    private val OMNI_SUSTAIN_MS = 180L
-
-    // If the "magnet present" state (which freezes baseline adaptation) drags on
-    // far longer than a real hand-arc ever takes, it's drift/interference, not a
-    // magnet — so we slowly let the baseline catch back up instead of staying
-    // stuck reporting a ghost forever.
-    private var magnetPresentSinceMs: Long = 0L
-    private val STUCK_PRESENCE_MS = 4000L
-
-    // Phone vibration motors are a known source of magnetometer interference —
-    // without this, a triggered "strike" vibration can perturb the field enough
-    // to look like more movement and re-trigger itself. Detection is blacked out
-    // for the duration of any haptic pulse plus a short settle buffer.
-    private var hapticBlackoutUntilMs: Long = 0L
-
-    /**
-     * Call this right when a haptic strike pulse is fired so the sensor briefly
-     * ignores readings while the vibration motor is active.
-     */
-    fun notifyHapticPulse(durationMs: Long = 300L) {
-        hapticBlackoutUntilMs = System.currentTimeMillis() + durationMs + 250L
-    }
 
     // Configuration parameters
     @Volatile var isRoomWideMode: Boolean = true // Ultra-high sensitivity for whole room detection
@@ -236,26 +219,40 @@ class MagneticSensorEngine(
     }
 
     /**
-     * Calculates the dynamic threshold based on Room-Wide mode, Fog setting,
+     * Calculates the dynamic threshold based on LocatorMode, Fog setting,
      * and the measured environmental noise floor.
-     *
-     * Both branches require the signal to clear the measured ambient noise floor
-     * by a wide margin (2.5-4x, not ~1x) — a real magnet swept at 10-30cm swings
-     * several microtesla, so demanding a bigger, unmistakable margin above noise
-     * still catches it easily while rejecting ordinary ambient jitter.
+     * Enforces a robust anti-ghosting floor to prevent false triggers when nothing is moving.
      */
     fun calculateEffectiveThreshold(): Float {
-        return if (isRoomWideMode) {
-            val scaledFog = 0.12f + (0.30f * fogLevel * fogLevel)
-            max(0.55f, scaledFog + (noiseFloor * 2.5f))
-        } else {
-            val fogScaled = customBaseThreshold * (0.4f + 3.2f * fogLevel * fogLevel)
-            max(1.0f, fogScaled + noiseFloor * (2.0f + 2.0f * fogLevel))
+        return when (_locatorMode.value) {
+            LocatorMode.PROXIMITY_50CM -> {
+                // Focus on 0 to 50 cm perimeter:
+                // At 40-50 cm, magnetic delta is typically 0.8 to 2.5 uT.
+                // Fog slider adjusts sensitivity from sensitive (0.70 uT) to shielded (2.8 uT)
+                val base = 0.70f + (2.10f * fogLevel)
+                max(0.65f, base + (noiseFloor * 0.7f))
+            }
+            LocatorMode.EARBUD_DETECTOR -> {
+                // Calibrated for wireless earbud neodymium driver magnet moving within 0-40 cm
+                val base = 0.60f + (1.60f * fogLevel)
+                max(0.55f, base + (noiseFloor * 0.5f))
+            }
+            LocatorMode.Y_AXIS_VERTICAL -> {
+                val base = 0.65f + (customBaseThreshold * 0.40f * fogLevel)
+                max(0.60f, base + (yNoiseFloor * 1.5f))
+            }
         }
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event == null || !_isPoweredOn.value) return
+
+        // Anti-ghosting: if the phone just pulsed its haptic motor, ignore magnetometer readings
+        // during and immediately after vibration so the motor doesn't re-trigger itself!
+        if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD ||
+            event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED) {
+            if (System.currentTimeMillis() < hapticPulseBlankUntilMs) return
+        }
 
         when (event.sensor.type) {
             Sensor.TYPE_PROXIMITY -> {
@@ -299,11 +296,8 @@ class MagneticSensorEngine(
         val rawZ = event.values[2]
         val nowMs = System.currentTimeMillis()
 
-        // Detect if the phone itself is moving (picked up, turned, laid down),
-        // or if our own vibration motor recently fired (a known source of
-        // magnetometer interference) — both are treated the same way below.
-        val isDevicePhysicallyMoving = (nowMs - lastMotionTimeMs) < MOTION_SETTLE_WINDOW_MS ||
-            nowMs < hapticBlackoutUntilMs
+        // Detect if the phone itself is moving (picked up, turned, laid down)
+        val isDevicePhysicallyMoving = (nowMs - lastMotionTimeMs) < MOTION_SETTLE_WINDOW_MS
 
         // Phase 1: First reading initialization
         if (!isBaselineInitialized) {
@@ -394,26 +388,18 @@ class MagneticSensorEngine(
         // Phase 4: Stationary Phone Detecting Moving Magnetic Objects
         // Phone is resting flat on a surface or held steady in pocket.
         // Any change in the magnetic field is strictly an external moving magnet!
-
-        // Smooth the raw Y sample first. A single noisy magnetometer sample is
-        // often bigger than the room-wide detection threshold on its own, which
-        // is the main source of "ghost" strikes when nothing is actually moving.
-        if (!isYFilterInit) {
-            smoothedY = rawY
-            isYFilterInit = true
-        } else {
-            smoothedY += jitterFilterAlpha * (rawY - smoothedY)
-        }
-
         val dx = rawX - baseBx
-        val dy = smoothedY - baseBy
+        val dy = rawY - baseBy
         val dz = rawZ - baseBz
+        val vectorDelta = sqrt(dx * dx + dy * dy + dz * dz)
 
-        // Movement detection is restricted to the Y axis only (the phone's
-        // up/down axis in portrait), so only something moving up-and-down near
-        // the phone will register — sideways or front/back field changes are
-        // ignored entirely for detection purposes.
-        val deltaMag = abs(dy)
+        // Compute total scalar flux density magnitude
+        val currentScalar = sqrt(rawX * rawX + rawY * rawY + rawZ * rawZ)
+        val baseScalar = sqrt(baseBx * baseBx + baseBy * baseBy + baseBz * baseBz)
+        val scalarDelta = abs(currentScalar - baseScalar)
+
+        // A moving magnet causes distortion in both vector and scalar field
+        val deltaMag = max(vectorDelta, scalarDelta)
 
         // Instantaneous rate of change dB/dt
         val dtSec = if (lastTimestampNs > 0) {
@@ -427,73 +413,105 @@ class MagneticSensorEngine(
 
         val threshold = calculateEffectiveThreshold()
 
-        // Noise floor calculation during quiet ambient periods
+        val absDy = abs(dy)
+        val absDx = abs(dx)
+        val absDz = abs(dz)
+
+        // Y-Axis Noise floor calculation during quiet ambient periods
+        if (absDy < threshold * 0.5f) {
+            recentYDeltas[yDeltaIndex % recentYDeltas.size] = absDy
+            yDeltaIndex++
+            var sumY = 0f
+            for (d in recentYDeltas) sumY += d
+            yNoiseFloor = max(0.08f, sumY / recentYDeltas.size)
+        }
+
+        // Overall 3D Noise floor calculation
         if (deltaMag < threshold * 0.6f) {
             recentDeltas[deltaIndex % recentDeltas.size] = deltaMag
             deltaIndex++
             var sum = 0f
             for (d in recentDeltas) sum += d
-            noiseFloor = max(0.06f, sum / recentDeltas.size)
+            noiseFloor = max(0.10f, sum / recentDeltas.size)
         }
 
         // Dynamic Baseline Adaptation:
-        // When quiet, slowly track room temperature/ambient drifts.
-        // When an external magnetic disturbance is detected, freeze adaptation completely
-        // so the moving magnet is never canceled out!
-        val isMagnetPresent = deltaMag > (threshold * 0.45f)
-
-        if (isMagnetPresent) {
-            if (magnetPresentSinceMs == 0L) magnetPresentSinceMs = nowMs
+        // Freeze baseline whenever external movement is present
+        val isMagnetPresent = if (_locatorMode.value == LocatorMode.Y_AXIS_VERTICAL) {
+            absDy > (threshold * 0.40f)
         } else {
-            magnetPresentSinceMs = 0L
+            deltaMag > (threshold * 0.45f)
         }
-        val presentDurationMs = if (magnetPresentSinceMs > 0L) nowMs - magnetPresentSinceMs else 0L
-
-        // A real hand-arc resolves within ~2s (see evaluateHandArcGesture). If the
-        // "present" state instead drags on far longer than that, it's not a magnet
-        // moving — it's drift or interference — so let the baseline slowly catch
-        // back up rather than staying stuck reporting a ghost indefinitely.
-        val adaptationAlpha = when {
-            !isMagnetPresent -> 0.003f
-            presentDurationMs > STUCK_PRESENCE_MS -> 0.01f
-            else -> 0.0f
-        }
+        val adaptationAlpha = if (isMagnetPresent) 0.0f else 0.003f
 
         baseBx = (1f - adaptationAlpha) * baseBx + adaptationAlpha * rawX
-        baseBy = (1f - adaptationAlpha) * baseBy + adaptationAlpha * smoothedY
+        baseBy = (1f - adaptationAlpha) * baseBy + adaptationAlpha * rawY
         baseBz = (1f - adaptationAlpha) * baseBz + adaptationAlpha * rawZ
 
-        // Append sample to gesture history for Kinematic Arc Recognition
-        sampleHistory.add(FluxHistorySample(nowMs, deltaMag))
+        // Append sample with vertical Y-axis and lateral axes for strict Y-axis analysis
+        sampleHistory.add(FluxHistorySample(nowMs, dy, dx, dz, deltaMag))
         while (sampleHistory.size > 140 || (sampleHistory.isNotEmpty() && nowMs - sampleHistory.first().timeMs > 2400L)) {
             sampleHistory.removeAt(0)
         }
 
-        // Evaluate detection according to locator mode:
-        // In WHICH_HAND_ARC mode: Specifically searches for a 10-30cm hand lift and return arc,
-        // ignoring static magnets, watches, and non-returning disturbances.
-        // In OMNI_ROOM mode: Standard threshold/transient trigger.
-        val (isStrike, currentGesturePhase) = if (_locatorMode.value == LocatorMode.WHICH_HAND_ARC) {
-            evaluateHandArcGesture(nowMs, threshold)
-        } else {
-            // Omni-Room: a hard threshold crossing that must hold for OMNI_SUSTAIN_MS
-            // straight. The old rate-of-change shortcut let a single sharp noise
-            // spike count as a hit even below the main threshold, which was another
-            // source of ghosting — removed.
-            if (deltaMag >= threshold) {
-                if (omniAboveSinceMs == 0L) omniAboveSinceMs = nowMs
-            } else {
-                omniAboveSinceMs = 0L
+        // Calculate Scent Strength (0 to 100%) mapped against perimeter threshold
+        val rawPercent = ((deltaMag / max(0.6f, threshold * 1.5f)) * 100f).toInt().coerceIn(0, 100)
+        val scentStrengthPercent = rawPercent
+
+        val estimatedDistanceCm = when {
+            deltaMag < 0.35f -> -1
+            deltaMag > 15.0f -> 5
+            deltaMag > 7.0f -> 12
+            deltaMag > 3.5f -> 22
+            deltaMag > 1.8f -> 32
+            deltaMag > 0.8f -> 45
+            else -> 50
+        }
+
+        // Target Strength Filter (user-configured min..max percentage)
+        val isInTargetWindow = scentStrengthPercent in targetMinStrengthPercent..targetMaxStrengthPercent
+
+        // Movement evaluation based on active LocatorMode (0-50cm, Earbuds, or Y-Axis)
+        val (isStrike, currentGesturePhase) = when (_locatorMode.value) {
+            LocatorMode.Y_AXIS_VERTICAL -> {
+                evaluateYAxisArcGesture(nowMs, threshold)
             }
-            val sustainedMs = if (omniAboveSinceMs > 0L) nowMs - omniAboveSinceMs else 0L
-            Pair(sustainedMs >= OMNI_SUSTAIN_MS, GesturePhase.IDLE)
+            LocatorMode.EARBUD_DETECTOR -> {
+                val moving = (deltaMag >= threshold && (rateOfChange >= 0.40f || deltaMag >= threshold * 1.25f))
+                val triggered = moving && isInTargetWindow
+                val phase = when {
+                    triggered -> GesturePhase.HAND_ARC_CONFIRMED
+                    deltaMag >= threshold * 0.70f -> GesturePhase.HAND_RISING
+                    else -> GesturePhase.IDLE
+                }
+                Pair(triggered, phase)
+            }
+            LocatorMode.PROXIMITY_50CM -> {
+                val moving = (deltaMag >= threshold && (rateOfChange >= 0.35f || deltaMag >= threshold * 1.20f))
+                val triggered = moving && isInTargetWindow
+                val phase = when {
+                    triggered -> GesturePhase.HAND_ARC_CONFIRMED
+                    deltaMag >= threshold * 0.65f -> GesturePhase.HAND_RISING
+                    else -> GesturePhase.IDLE
+                }
+                Pair(triggered, phase)
+            }
+        }
+
+        val scentStatusText = when {
+            !_isPoweredOn.value -> "The goblin sleeps."
+            isDevicePhysicallyMoving -> "Ignoring phone movement"
+            isStrike -> "Movement Detected!"
+            currentGesturePhase == GesturePhase.HAND_RISING || deltaMag >= threshold * 0.70f -> "Strong Scent ($scentStrengthPercent%)"
+            deltaMag >= threshold * 0.35f -> "Faint Scent ($scentStrengthPercent%)"
+            else -> "The goblin sleeps."
         }
 
         // Determine Creature State
         val newState = when {
             isStrike -> CreatureState.STRIKING
-            currentGesturePhase == GesturePhase.HAND_APEX || currentGesturePhase == GesturePhase.HAND_RISING || deltaMag >= threshold * 0.70f -> CreatureState.AWAKE
-            currentGesturePhase == GesturePhase.HAND_RETURNING || deltaMag >= threshold * 0.35f -> CreatureState.STIRRING
+            scentStrengthPercent >= 65 || deltaMag >= threshold * 0.70f -> CreatureState.AWAKE
+            scentStrengthPercent >= 25 || deltaMag >= threshold * 0.35f -> CreatureState.STIRRING
             else -> CreatureState.SLUMBERING
         }
         _creatureState.value = newState
@@ -510,11 +528,14 @@ class MagneticSensorEngine(
             deltaZ = dz,
             deltaMagnitude = deltaMag,
             rateOfChange = rateOfChange,
-            noiseFloor = noiseFloor,
-            isPhoneMoving = false,
+            noiseFloor = if (_locatorMode.value == LocatorMode.Y_AXIS_VERTICAL) yNoiseFloor else noiseFloor,
+            isPhoneMoving = isDevicePhysicallyMoving,
             isRoomAttuned = true,
             gesturePhase = currentGesturePhase,
             isHandArcDetected = isStrike,
+            scentStrengthPercent = scentStrengthPercent,
+            scentStatusText = scentStatusText,
+            estimatedDistanceCm = estimatedDistanceCm,
             timestamp = nowMs
         )
         _readingState.value = reading
@@ -531,28 +552,32 @@ class MagneticSensorEngine(
     }
 
     /**
-     * Specifically evaluates the kinematic signature of a spectator's hand moving a hidden magnet
-     * up 10-30cm and then down.
-     * Rejects stationary magnets, smartwatch micro-jitter, and non-returning phone movements.
+     * Specifically evaluates vertical Y-axis movement (10-30cm up and down).
+     * Eliminates ghost movement triggers by requiring:
+     * 1. Y-axis peak exceeds the robust anti-ghost threshold (>= 0.60 uT).
+     * 2. Y-axis is dominant over lateral X-axis and Z-axis, ensuring purely vertical movement.
+     * 3. Symmetrical return to baseline within human hand motion duration (350ms - 1850ms).
+     * 4. Exceeds Y-axis noise floor by at least 2.5x SNR.
      */
-    private fun evaluateHandArcGesture(nowMs: Long, threshold: Float): Pair<Boolean, GesturePhase> {
+    private fun evaluateYAxisArcGesture(nowMs: Long, threshold: Float): Pair<Boolean, GesturePhase> {
         if (sampleHistory.size < 10) return Pair(false, GesturePhase.IDLE)
 
         val latest = sampleHistory.last()
-        val latestDelta = latest.deltaMag
+        val latestDy = abs(latest.dy)
 
         // Consider recent 1900ms window
         val cutoff = nowMs - 1900L
         val recent = sampleHistory.filter { it.timeMs >= cutoff }
         if (recent.size < 8) return Pair(false, GesturePhase.IDLE)
 
-        // Find peak delta in the recent window
+        // Find peak vertical excursion (|dy|) in recent window
         var peakIdx = -1
-        var peakVal = -1f
+        var peakDy = -1f
         for (i in recent.indices) {
             val s = recent[i]
-            if (s.deltaMag > peakVal) {
-                peakVal = s.deltaMag
+            val dyMag = abs(s.dy)
+            if (dyMag > peakDy) {
+                peakDy = dyMag
                 peakIdx = i
             }
         }
@@ -563,45 +588,59 @@ class MagneticSensorEngine(
 
         // Dynamic Gesture Phase indication for live HUD/visual feedback
         val currentPhase = when {
-            latestDelta < threshold * 0.35f -> GesturePhase.IDLE
-            peakAge < 150L && latestDelta >= threshold * 0.70f -> GesturePhase.HAND_APEX
-            latestDelta >= threshold * 0.40f && latestDelta > recent.first().deltaMag -> GesturePhase.HAND_RISING
-            latestDelta >= threshold * 0.30f && latestDelta < peakVal -> GesturePhase.HAND_RETURNING
+            latestDy < threshold * 0.35f -> GesturePhase.IDLE
+            peakAge < 150L && latestDy >= threshold * 0.70f -> GesturePhase.HAND_APEX
+            latestDy >= threshold * 0.40f && latestDy > abs(recent.first().dy) -> GesturePhase.HAND_RISING
+            latestDy >= threshold * 0.30f && latestDy < peakDy -> GesturePhase.HAND_RETURNING
             else -> GesturePhase.IDLE
         }
 
-        // Must cross gesture threshold (10-30cm movement threshold)
-        if (peakVal < threshold) return Pair(false, currentPhase)
+        // 1. Anti-Ghost Check: Must cross robust Y-axis threshold
+        if (peakDy < threshold) return Pair(false, currentPhase)
+
+        // 2. Anti-Ghost SNR Check: Must exceed Y noise floor significantly
+        if (peakDy < yNoiseFloor * 2.5f) return Pair(false, currentPhase)
+
+        // 3. Strict Y-Axis Restriction:
+        // Must be predominantly on the Y-axis (vertical up/down), NOT sideways (X) or forward/back (Z)
+        val peakDx = abs(peakSample.dx)
+        val peakDz = abs(peakSample.dz)
+        val isYDominant = peakDy >= (peakDx * 1.25f) && peakDy >= (peakDz * 1.05f)
+        if (!isYDominant) {
+            // Horizontal or non-vertical motion rejected!
+            return Pair(false, currentPhase)
+        }
 
         // Peak must not be at the very latest sample (it must have completed apex and returned)
         if (peakIdx >= recent.size - 2) return Pair(false, currentPhase)
-        // Peak should have occurred between 100ms and 950ms ago
         if (peakAge !in 100L..950L) return Pair(false, currentPhase)
 
-        // Find baseline before peak (where the hand started moving up)
+        // Find baseline on Y before peak (where the hand started moving up)
         var startIdx = -1
         var minBeforePeak = Float.MAX_VALUE
         for (i in 0 until peakIdx) {
             val s = recent[i]
             val dtToPeak = peakSample.timeMs - s.timeMs
-            if (dtToPeak in 100L..950L && s.deltaMag < minBeforePeak) {
-                minBeforePeak = s.deltaMag
+            val dyVal = abs(s.dy)
+            if (dtToPeak in 100L..950L && dyVal < minBeforePeak) {
+                minBeforePeak = dyVal
                 startIdx = i
             }
         }
         if (startIdx == -1) return Pair(false, currentPhase)
         val startSample = recent[startIdx]
 
-        // 1. Hand started near baseline (idle hand before raising)
-        val isStartNearBase = startSample.deltaMag <= (peakVal * 0.50f) || startSample.deltaMag <= (threshold * 0.50f)
+        // 4. Return-to-Baseline Checks:
+        // Hand started near baseline
+        val startDy = abs(startSample.dy)
+        val isStartNearBase = startDy <= (peakDy * 0.45f) || startDy <= (threshold * 0.45f)
         if (!isStartNearBase) return Pair(false, currentPhase)
 
-        // 2. Hand returned back down to baseline (completed up-then-down movement)
-        val isEndNearBase = latestDelta <= (peakVal * 0.52f) || latestDelta <= (threshold * 0.55f)
+        // Hand returned back down to baseline
+        val isEndNearBase = latestDy <= (peakDy * 0.45f) || latestDy <= (threshold * 0.50f)
         if (!isEndNearBase) return Pair(false, currentPhase)
 
-        // 3. Human kinematic timing check:
-        // A hand lifting 10-30cm and lowering takes between 350ms and 1850ms total
+        // 5. Human kinematic timing check (350ms to 1850ms)
         val totalDuration = nowMs - startSample.timeMs
         val riseDuration = peakSample.timeMs - startSample.timeMs
         val fallDuration = nowMs - peakSample.timeMs

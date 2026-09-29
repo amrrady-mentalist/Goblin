@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Sensors
@@ -45,6 +46,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -58,12 +61,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.VenueProfileEntity
 import com.example.domain.model.HapticFeedbackType
+import com.example.domain.model.LocatorMode
 import com.example.domain.model.VibrationStrength
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.MidnightBg
@@ -83,12 +88,17 @@ fun SettingsSheet(
     activeProfile: VenueProfileEntity?,
     currentHapticType: HapticFeedbackType,
     currentStrength: VibrationStrength,
+    locatorMode: LocatorMode = LocatorMode.PROXIMITY_50CM,
+    targetMinStrengthPercent: Int = 0,
+    targetMaxStrengthPercent: Int = 100,
     autoPocketStealth: Boolean,
     volumeKeyTare: Boolean,
     stealthMicroDot: Boolean,
     onSelectProfile: (VenueProfileEntity) -> Unit,
     onSaveProfile: (name: String, desc: String) -> Unit,
     onDeleteProfile: (VenueProfileEntity) -> Unit,
+    onSelectLocatorMode: (LocatorMode) -> Unit = {},
+    onSetTargetStrengthWindow: (Int, Int) -> Unit = { _, _ -> },
     onSelectHaptic: (HapticFeedbackType) -> Unit,
     onSelectStrength: (VibrationStrength) -> Unit,
     onToggleAutoPocket: (Boolean) -> Unit,
@@ -101,6 +111,10 @@ fun SettingsSheet(
     var showSaveDialog by remember { mutableStateOf(false) }
     var newProfileName by remember { mutableStateOf("") }
     var newProfileDesc by remember { mutableStateOf("") }
+
+    var sliderRange by remember(targetMinStrengthPercent, targetMaxStrengthPercent) {
+        mutableStateOf(targetMinStrengthPercent.toFloat()..targetMaxStrengthPercent.toFloat())
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -151,6 +165,164 @@ fun SettingsSheet(
                     )
                 }
             }
+
+            // Section: Magic Routine & Proximity Perimeter Mode
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "MAGIC ROUTINE & PROXIMITY MODE",
+                    color = TextMedium,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LocatorMode.values().forEach { mode ->
+                        val isSelected = locatorMode == mode
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectLocatorMode(mode) },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) ElectricCyan.copy(alpha = 0.12f) else MidnightCard
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) ElectricCyan else MidnightCardBorder
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = when (mode) {
+                                        LocatorMode.EARBUD_DETECTOR -> Icons.Default.Headphones
+                                        LocatorMode.PROXIMITY_50CM -> Icons.Default.Sensors
+                                        LocatorMode.Y_AXIS_VERTICAL -> Icons.Default.Tune
+                                    },
+                                    contentDescription = mode.label,
+                                    tint = if (isSelected) ElectricCyan else TextMedium,
+                                    modifier = Modifier.size(22.dp)
+                                )
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = mode.label,
+                                        color = if (isSelected) ElectricCyan else TextHigh,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = mode.description,
+                                        color = TextMedium,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Earbud / AirPods Concealment Routine Card
+                if (locatorMode == LocatorMode.EARBUD_DETECTOR) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF064E3B).copy(alpha = 0.35f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Headphones,
+                                    contentDescription = "Earbud Trick",
+                                    tint = Color(0xFF34D399),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Wireless Earbud Trick Guide",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = "1. Hand one of your Bluetooth earbuds (or AirPods) to the spectator.\n" +
+                                        "2. Have them conceal it in one closed fist behind their back, then hold both fists forward.\n" +
+                                        "3. Hover your phone within 0-40 cm above each fist.\n" +
+                                        "4. The Goblin rumbles ONLY over the hand concealing the earbud!",
+                                color = TextHigh.copy(alpha = 0.9f),
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MidnightCardBorder)
+
+            // Section: Target Field Strength Window (Percentage Range)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TARGET FIELD STRENGTH WINDOW",
+                        color = TextMedium,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+
+                    Text(
+                        text = "${sliderRange.start.toInt()}% - ${sliderRange.endInclusive.toInt()}%",
+                        color = ElectricCyan,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Text(
+                    text = "Filter triggers to only alert when the moving object's magnetic intensity falls within this percentage window.",
+                    color = TextMedium,
+                    fontSize = 11.sp
+                )
+
+                RangeSlider(
+                    value = sliderRange,
+                    onValueChange = { range ->
+                        sliderRange = range
+                        onSetTargetStrengthWindow(range.start.toInt(), range.endInclusive.toInt())
+                    },
+                    valueRange = 0f..100f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = ElectricCyan,
+                        activeTrackColor = ElectricCyan,
+                        inactiveTrackColor = Color(0xFF1E293B)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("target_strength_slider")
+                )
+            }
+
+            HorizontalDivider(color = MidnightCardBorder)
 
             // Section 1: Venue Presets & Profiles
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -117,6 +117,9 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val isPoweredOn by viewModel.isPoweredOn.collectAsStateWithLifecycle()
     val isRoomWideMode by viewModel.isRoomWideMode.collectAsStateWithLifecycle()
     val locatorMode by viewModel.locatorMode.collectAsStateWithLifecycle()
+    val rumbleMode by viewModel.rumbleMode.collectAsStateWithLifecycle()
+    val targetMinStrength by viewModel.targetMinStrengthPercent.collectAsStateWithLifecycle()
+    val targetMaxStrength by viewModel.targetMaxStrengthPercent.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val fogLevel by viewModel.fogLevel.collectAsStateWithLifecycle()
     val effectiveThreshold by viewModel.effectiveThreshold.collectAsStateWithLifecycle()
@@ -303,16 +306,15 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             reading = reading,
                             effectiveThreshold = effectiveThreshold,
                             fogLevel = fogLevel,
-                            hapticType = hapticType,
+                            rumbleMode = rumbleMode,
                             isPoweredOn = isPoweredOn,
-                            isRoomWideMode = isRoomWideMode,
-                            locatorMode = locatorMode,
+                            isStealthActive = isStealthActive,
                             onTogglePower = { viewModel.togglePower() },
-                            onToggleRoomWideMode = { viewModel.toggleRoomWideMode() },
-                            onToggleLocatorMode = { viewModel.toggleLocatorMode() },
                             onFogChange = { viewModel.setFogLevel(it) },
+                            onSelectRumbleMode = { viewModel.setRumbleMode(it) },
+                            onToggleStealth = { viewModel.setStealth(!isStealthActive) },
+                            onOpenSettings = { showSettingsSheet = true },
                             onTareBaseline = { viewModel.tareBaseline() },
-                            onEnterStealth = { viewModel.setStealth(true) },
                             onTestHaptic = { viewModel.testHaptic() }
                         )
                     }
@@ -357,12 +359,17 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                 activeProfile = activeProfile,
                 currentHapticType = hapticType,
                 currentStrength = vibrationStrength,
+                locatorMode = locatorMode,
+                targetMinStrengthPercent = targetMinStrength,
+                targetMaxStrengthPercent = targetMaxStrength,
                 autoPocketStealth = autoPocketStealth,
                 volumeKeyTare = volumeKeyTare,
                 stealthMicroDot = stealthMicroDot,
                 onSelectProfile = { viewModel.selectProfile(it) },
                 onSaveProfile = { name, desc -> viewModel.saveCurrentAsProfile(name, desc) },
                 onDeleteProfile = { viewModel.deleteProfile(it) },
+                onSelectLocatorMode = { viewModel.setLocatorMode(it) },
+                onSetTargetStrengthWindow = { minP, maxP -> viewModel.setTargetStrengthWindow(minP, maxP) },
                 onSelectHaptic = { viewModel.setHapticType(it) },
                 onSelectStrength = { viewModel.setVibrationStrength(it) },
                 onToggleAutoPocket = { viewModel.setAutoPocketStealth(it) },
