@@ -107,6 +107,11 @@ class MainActivity : ComponentActivity() {
         }
         return super.onKeyDown(keyCode, event)
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        viewModel.sensorEngine.stopListening()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -20,6 +20,14 @@ class ExampleRobolectricTest {
   }
 
   @Test
+  fun `test activity launches cleanly`() {
+    val controller = org.robolectric.Robolectric.buildActivity(MainActivity::class.java).setup()
+    val activity = controller.get()
+    org.junit.Assert.assertNotNull(activity)
+    controller.pause().stop().destroy()
+  }
+
+  @Test
   fun `test magnetic delta calculation`() {
     val reading = com.example.domain.model.MagneticReading(
         x = 10f, y = 20f, z = 30f,

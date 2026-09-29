@@ -61,7 +61,10 @@ fun OrganicEyeCanvas(
     // Dynamic pupil dilation animated to delta magnitude
     val pupilDilation = remember { Animatable(0.25f) }
     LaunchedEffect(deltaMagnitude, threshold) {
-        val target = (0.22f + (deltaMagnitude / (threshold * 1.5f)).coerceIn(0f, 0.55f))
+        val safeThreshold = if (threshold.isFinite() && threshold > 0.01f) threshold else 1.0f
+        val safeDelta = if (deltaMagnitude.isFinite() && deltaMagnitude >= 0f) deltaMagnitude else 0f
+        val ratio = (safeDelta / (safeThreshold * 1.5f)).coerceIn(0f, 0.55f)
+        val target = 0.22f + ratio
         pupilDilation.animateTo(target, tween(120))
     }
 

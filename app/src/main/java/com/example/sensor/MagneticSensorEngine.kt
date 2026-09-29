@@ -5,6 +5,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Handler
+import android.os.HandlerThread
 import com.example.domain.model.CreatureState
 import com.example.domain.model.GesturePhase
 import com.example.domain.model.LocatorMode
@@ -90,6 +92,11 @@ class MagneticSensorEngine(
         hapticPulseBlankUntilMs = System.currentTimeMillis() + durationMs
     }
 
+    // Dedicated background thread for high-frequency sensor dispatching
+    private var sensorThread: HandlerThread? = null
+    private var sensorHandler: Handler? = null
+    private var lastUiEmitTimeMs = 0L
+
     // Kinematic Gesture Buffer specifically recording vertical Y-axis and lateral axes
     private data class FluxHistorySample(
         val timeMs: Long,
@@ -98,7 +105,7 @@ class MagneticSensorEngine(
         val dz: Float,
         val deltaMag: Float
     )
-    private val sampleHistory = ArrayList<FluxHistorySample>(140)
+    private val sampleHistory = ArrayList<FluxHistorySample>(450)
     private var lastConfirmedGestureTimeMs = 0L
 
     val isSensorAvailable: Boolean get() = magnetometer != null
@@ -173,22 +180,32 @@ class MagneticSensorEngine(
 
     fun startListening() {
         if (!_isPoweredOn.value) return
+        if (sensorThread == null) {
+            sensorThread = HandlerThread("MagneticSensorEngineThread").apply {
+                start()
+                sensorHandler = Handler(looper)
+            }
+        }
+        val handler = sensorHandler
         magnetometer?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, handler)
         }
         accelerometer?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, handler)
         }
         gyroscope?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, handler)
         }
         proximitySensor?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL, handler)
         }
     }
 
     fun stopListening() {
         sensorManager?.unregisterListener(this)
+        sensorThread?.quitSafely()
+        sensorThread = null
+        sensorHandler = null
     }
 
     /**
@@ -334,23 +351,26 @@ class MagneticSensorEngine(
                 _creatureState.value = CreatureState.SLUMBERING
             }
 
-            _readingState.value = MagneticReading(
-                x = rawX,
-                y = rawY,
-                z = rawZ,
-                baselineX = baseBx,
-                baselineY = baseBy,
-                baselineZ = baseBz,
-                deltaX = 0f,
-                deltaY = 0f,
-                deltaZ = 0f,
-                deltaMagnitude = 0f,
-                rateOfChange = 0f,
-                noiseFloor = noiseFloor,
-                isPhoneMoving = isDevicePhysicallyMoving,
-                isRoomAttuned = !isCalibratingRoom,
-                timestamp = nowMs
-            )
+            if ((nowMs - lastUiEmitTimeMs) >= 20L) {
+                lastUiEmitTimeMs = nowMs
+                _readingState.value = MagneticReading(
+                    x = rawX,
+                    y = rawY,
+                    z = rawZ,
+                    baselineX = baseBx,
+                    baselineY = baseBy,
+                    baselineZ = baseBz,
+                    deltaX = 0f,
+                    deltaY = 0f,
+                    deltaZ = 0f,
+                    deltaMagnitude = 0f,
+                    rateOfChange = 0f,
+                    noiseFloor = noiseFloor,
+                    isPhoneMoving = isDevicePhysicallyMoving,
+                    isRoomAttuned = !isCalibratingRoom,
+                    timestamp = nowMs
+                )
+            }
             return
         }
 
@@ -371,23 +391,26 @@ class MagneticSensorEngine(
             // Suppress all false alerts while the phone moves!
             _creatureState.value = CreatureState.SLUMBERING
 
-            _readingState.value = MagneticReading(
-                x = rawX,
-                y = rawY,
-                z = rawZ,
-                baselineX = baseBx,
-                baselineY = baseBy,
-                baselineZ = baseBz,
-                deltaX = 0f,
-                deltaY = 0f,
-                deltaZ = 0f,
-                deltaMagnitude = 0f,
-                rateOfChange = 0f,
-                noiseFloor = noiseFloor,
-                isPhoneMoving = true,
-                isRoomAttuned = false,
-                timestamp = nowMs
-            )
+            if ((nowMs - lastUiEmitTimeMs) >= 20L) {
+                lastUiEmitTimeMs = nowMs
+                _readingState.value = MagneticReading(
+                    x = rawX,
+                    y = rawY,
+                    z = rawZ,
+                    baselineX = baseBx,
+                    baselineY = baseBy,
+                    baselineZ = baseBz,
+                    deltaX = 0f,
+                    deltaY = 0f,
+                    deltaZ = 0f,
+                    deltaMagnitude = 0f,
+                    rateOfChange = 0f,
+                    noiseFloor = noiseFloor,
+                    isPhoneMoving = true,
+                    isRoomAttuned = false,
+                    timestamp = nowMs
+                )
+            }
             return
         }
 
@@ -467,7 +490,7 @@ class MagneticSensorEngine(
 
         // Append sample with vertical Y-axis and lateral axes for strict Y-axis analysis
         sampleHistory.add(FluxHistorySample(nowMs, dy, dx, dz, deltaMag))
-        while (sampleHistory.size > 140 || (sampleHistory.isNotEmpty() && nowMs - sampleHistory.first().timeMs > 2400L)) {
+        while (sampleHistory.size > 450 || (sampleHistory.isNotEmpty() && nowMs - sampleHistory.first().timeMs > 2400L)) {
             sampleHistory.removeAt(0)
         }
 
@@ -555,7 +578,10 @@ class MagneticSensorEngine(
             estimatedDistanceCm = estimatedDistanceCm,
             timestamp = nowMs
         )
-        _readingState.value = reading
+        if (isStrike || (nowMs - lastUiEmitTimeMs) >= 16L) {
+            lastUiEmitTimeMs = nowMs
+            _readingState.value = reading
+        }
 
         // Emit strike event for haptic cue (debounced)
         if (isStrike) {
