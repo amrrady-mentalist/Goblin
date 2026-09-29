@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -173,13 +174,13 @@ class MagneticSensorEngine(
     fun startListening() {
         if (!_isPoweredOn.value) return
         magnetometer?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
         }
         accelerometer?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
         }
         gyroscope?.let { sensor ->
-            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
         }
         proximitySensor?.let { sensor ->
             sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
@@ -355,12 +356,17 @@ class MagneticSensorEngine(
 
         // Phase 3: Phone Motion Immunity (Ignoring phone's own movement)
         if (isDevicePhysicallyMoving) {
-            // When the phone itself moves or is being placed flat on a table:
-            // Fast adaptation follows the phone's new physical orientation in the room's magnetic field.
-            val rapidAlpha = 0.35f
+            // Fast adaptation follows the phone's new physical orientation in the room's magnetic field
+            val dtSec = if (lastTimestampNs > 0) {
+                val rawDt = (event.timestamp - lastTimestampNs) / 1_000_000_000f
+                if (rawDt in 0.0005f..0.5f) rawDt else 0.01f
+            } else 0.01f
+            val rapidAlpha = (1.0f - exp(-dtSec / 0.15f)).coerceIn(0.10f, 0.90f)
             baseBx = (1f - rapidAlpha) * baseBx + rapidAlpha * rawX
             baseBy = (1f - rapidAlpha) * baseBy + rapidAlpha * rawY
             baseBz = (1f - rapidAlpha) * baseBz + rapidAlpha * rawZ
+            lastTimestampNs = event.timestamp
+            lastDeltaMagnitude = 0f
 
             // Suppress all false alerts while the phone moves!
             _creatureState.value = CreatureState.SLUMBERING
@@ -403,9 +409,10 @@ class MagneticSensorEngine(
 
         // Instantaneous rate of change dB/dt
         val dtSec = if (lastTimestampNs > 0) {
-            max(0.005f, (event.timestamp - lastTimestampNs) / 1_000_000_000f)
+            val rawDt = (event.timestamp - lastTimestampNs) / 1_000_000_000f
+            if (rawDt in 0.0005f..0.5f) rawDt else 0.01f
         } else {
-            0.02f
+            0.01f
         }
         val rateOfChange = abs(deltaMag - lastDeltaMagnitude) / dtSec
         lastTimestampNs = event.timestamp
@@ -435,18 +442,28 @@ class MagneticSensorEngine(
             noiseFloor = max(0.10f, sum / recentDeltas.size)
         }
 
-        // Dynamic Baseline Adaptation:
-        // Freeze baseline whenever external movement is present
-        val isMagnetPresent = if (_locatorMode.value == LocatorMode.Y_AXIS_VERTICAL) {
-            absDy > (threshold * 0.40f)
-        } else {
-            deltaMag > (threshold * 0.45f)
-        }
-        val adaptationAlpha = if (isMagnetPresent) 0.0f else 0.003f
+        // Dynamic Baseline Adaptation using an Exponential Moving Average (EMA) filter:
+        // Tau controls the adaptation rate dynamically based on magnetic activity:
+        // 1. Actively moving magnet (rateOfChange >= 0.35 uT/s):
+        //    tau = 30.0s — Keeps the baseline steady so fast hand sweeps are not absorbed or missed.
+        // 2. Stationary magnet holding still nearby (deltaMag > threshold * 0.40f && rateOfChange < 0.20 uT/s):
+        //    tau = 3.5s — Gradually adapts the baseline to the new local DC offset. This completely
+        //    eliminates continuous endless vibrations when an earbud or prop rests near the phone.
+        // 3. Normal quiet ambient background (deltaMag <= threshold * 0.40f):
+        //    tau = 2.0s — Continuously eliminates baseline drift, sensor temperature drift, and slow room fluctuations.
+        val isActivelyMoving = rateOfChange >= 0.35f
+        val isStationaryMagnet = deltaMag > (threshold * 0.40f) && !isActivelyMoving
 
-        baseBx = (1f - adaptationAlpha) * baseBx + adaptationAlpha * rawX
-        baseBy = (1f - adaptationAlpha) * baseBy + adaptationAlpha * rawY
-        baseBz = (1f - adaptationAlpha) * baseBz + adaptationAlpha * rawZ
+        val tauSec = when {
+            isActivelyMoving -> 30.0f
+            isStationaryMagnet -> 3.5f
+            else -> 2.0f
+        }
+        val emaAlpha = (1.0f - exp(-dtSec / tauSec)).coerceIn(0.0001f, 0.90f)
+
+        baseBx = (1f - emaAlpha) * baseBx + emaAlpha * rawX
+        baseBy = (1f - emaAlpha) * baseBy + emaAlpha * rawY
+        baseBz = (1f - emaAlpha) * baseBz + emaAlpha * rawZ
 
         // Append sample with vertical Y-axis and lateral axes for strict Y-axis analysis
         sampleHistory.add(FluxHistorySample(nowMs, dy, dx, dz, deltaMag))
