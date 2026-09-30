@@ -73,6 +73,7 @@ import com.example.ui.screens.log.EventLogScreen
 import com.example.ui.screens.settings.ExactSettingsScreen
 import com.example.ui.screens.settings.SettingsSheet
 import com.example.ui.screens.settings.TutorialScreen
+import com.example.ui.screens.splash.SplashScreen
 import com.example.ui.screens.stealth.PitchBlackImmersiveOverlay
 import com.example.ui.screens.stealth.StealthOverlay
 import com.example.ui.theme.ElectricCyan
@@ -169,6 +170,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     }
 
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var isSplashVisible by remember { mutableStateOf(true) }
 
     Box(modifier = Modifier.fillMaxSize().background(MidnightBg)) {
         Scaffold(
@@ -350,6 +352,11 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                 isVisualDotVisible = isVisualDotVisible,
                 onExit = { viewModel.setScreenOffMode(false) }
             )
+        }
+
+        // Animated Splash Screen matching image background (#0A1A2A)
+        if (isSplashVisible) {
+            SplashScreen(onSplashFinished = { isSplashVisible = false })
         }
 
         // Configuration & Preset Bottom Sheet

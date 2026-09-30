@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/goblin_icon"
+        android:drawable="@drawable/app_icon_eye"
         android:gravity="center" />
 </layer-list>
