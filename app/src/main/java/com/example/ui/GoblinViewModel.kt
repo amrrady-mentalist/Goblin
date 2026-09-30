@@ -16,6 +16,7 @@ import com.example.domain.model.VibrationStrength
 import com.example.haptics.DiscreetHapticEngine
 import com.example.notification.DetectionNotificationManager
 import com.example.sensor.MagneticSensorEngine
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,9 +27,6 @@ import kotlinx.coroutines.launch
 
 enum class PerformanceTab {
     SETTINGS,
-    CREATURE,
-    MENTALIST_HUD,
-    LOG_REHEARSAL,
     TUTORIAL
 }
 
@@ -52,6 +50,22 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     val smartAlarmThreshold: StateFlow<Float>
     val isSleepingMode: StateFlow<Boolean>
     val liveMicroTesla: StateFlow<Int>
+
+    // Screen Off Mode (Pitch Black Immersive Mode)
+    private val _isScreenOffModeActive = MutableStateFlow(false)
+    val isScreenOffModeActive: StateFlow<Boolean> = _isScreenOffModeActive.asStateFlow()
+
+    // Visual Mode (Tiny Green Dot in top-left corner)
+    private val _isVisualModeEnabled = MutableStateFlow(false)
+    val isVisualModeEnabled: StateFlow<Boolean> = _isVisualModeEnabled.asStateFlow()
+
+    // Vibration with Visual Mode (use both vibration and visual or visual only)
+    private val _vibrationWithVisual = MutableStateFlow(true)
+    val vibrationWithVisual: StateFlow<Boolean> = _vibrationWithVisual.asStateFlow()
+
+    // Live state of the tiny green dot
+    private val _isVisualDotVisible = MutableStateFlow(false)
+    val isVisualDotVisible: StateFlow<Boolean> = _isVisualDotVisible.asStateFlow()
 
     private val _isRoomWideMode = MutableStateFlow(true)
     val isRoomWideMode: StateFlow<Boolean> = _isRoomWideMode.asStateFlow()
@@ -137,8 +151,19 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                 // before firing it, so the pulse can't re-trigger another "strike".
                 sensorEngine.notifyHapticPulse()
 
-                // Play 2 strong vibrations (or configured haptic sensation)
-                hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
+                // 1. If Visual Mode is enabled, light up tiny green dot
+                if (_isVisualModeEnabled.value) {
+                    _isVisualDotVisible.value = true
+                    launch {
+                        delay(1200L)
+                        _isVisualDotVisible.value = false
+                    }
+                }
+
+                // 2. Play vibration if Visual Mode is disabled OR vibrationWithVisual is active
+                if (!_isVisualModeEnabled.value || _vibrationWithVisual.value) {
+                    hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
+                }
 
                 // Send immediate local notification with Hand Arc context
                 notificationManager.sendImmediateDetectionNotification(
@@ -227,6 +252,18 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleSleepingMode() {
         sensorEngine.toggleSleepingMode()
+    }
+
+    fun setScreenOffMode(active: Boolean) {
+        _isScreenOffModeActive.value = active
+    }
+
+    fun setVisualModeEnabled(enabled: Boolean) {
+        _isVisualModeEnabled.value = enabled
+    }
+
+    fun setVibrationWithVisual(enabled: Boolean) {
+        _vibrationWithVisual.value = enabled
     }
 
     fun setPower(on: Boolean) {

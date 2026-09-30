@@ -80,6 +80,9 @@ fun ExactSettingsScreen(
     smartAlarmThreshold: Float,
     isSleepingMode: Boolean,
     liveMicroTesla: Int,
+    isScreenOffModeActive: Boolean = false,
+    isVisualModeEnabled: Boolean = false,
+    vibrationWithVisual: Boolean = true,
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
@@ -87,6 +90,9 @@ fun ExactSettingsScreen(
     onToggleSmartAlarm: () -> Unit,
     onSmartAlarmThresholdChange: (Float) -> Unit,
     onToggleSleepingMode: () -> Unit,
+    onToggleScreenOffMode: (Boolean) -> Unit = {},
+    onToggleVisualMode: (Boolean) -> Unit = {},
+    onToggleVibrationWithVisual: (Boolean) -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onOpenTutorial: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -431,6 +437,116 @@ fun ExactSettingsScreen(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.testTag("microtesla_value_text")
+                    )
+                }
+
+                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+
+                // 8. Screen Off Mode Section
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Screen off mode",
+                        color = TextTitleColor,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+
+                    Button(
+                        onClick = { onToggleScreenOffMode(true) },
+                        colors = ButtonDefaults.buttonColors(containerColor = ButtonDark),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier
+                            .height(40.dp)
+                            .testTag("enter_screen_off_mode_button")
+                    ) {
+                        Text(
+                            text = "Turn Screen Off",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Turns into a pitch black screen in immersive mode so it looks like the phone is locked. The app continues detecting in the background. Swipe down with 2 fingers to get back to the app.",
+                    color = TextDescColor,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+
+                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+
+                // 9. Visual Mode Section
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Visual mode",
+                        color = TextTitleColor,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+
+                    Switch(
+                        checked = isVisualModeEnabled,
+                        onCheckedChange = { onToggleVisualMode(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = YellowAccent,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = Color(0xFFCBD5E1)
+                        ),
+                        modifier = Modifier.testTag("visual_mode_switch")
+                    )
+                }
+
+                Text(
+                    text = "In pitch black screen off mode, a very tiny green dot appears on the very top left corner when a magnet is detected.",
+                    color = TextDescColor,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+
+                if (isVisualModeEnabled) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Use vibrations with visual mode",
+                            color = TextTitleColor,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Normal
+                        )
+
+                        Switch(
+                            checked = vibrationWithVisual,
+                            onCheckedChange = { onToggleVibrationWithVisual(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = YellowAccent,
+                                uncheckedThumbColor = Color.White,
+                                uncheckedTrackColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.testTag("vibration_with_visual_switch")
+                        )
+                    }
+
+                    Text(
+                        text = if (vibrationWithVisual) "Both vibrations and green dot will alert you on detection." else "Vibrations muted: green dot only for silent detection.",
+                        color = TextDescColor,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
                     )
                 }
 

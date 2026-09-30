@@ -73,6 +73,7 @@ import com.example.ui.screens.log.EventLogScreen
 import com.example.ui.screens.settings.ExactSettingsScreen
 import com.example.ui.screens.settings.SettingsSheet
 import com.example.ui.screens.settings.TutorialScreen
+import com.example.ui.screens.stealth.PitchBlackImmersiveOverlay
 import com.example.ui.screens.stealth.StealthOverlay
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.MidnightBg
@@ -150,6 +151,11 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val smartAlarmThreshold by viewModel.smartAlarmThreshold.collectAsStateWithLifecycle()
     val isSleepingMode by viewModel.isSleepingMode.collectAsStateWithLifecycle()
     val liveMicroTesla by viewModel.liveMicroTesla.collectAsStateWithLifecycle()
+
+    val isScreenOffModeActive by viewModel.isScreenOffModeActive.collectAsStateWithLifecycle()
+    val isVisualModeEnabled by viewModel.isVisualModeEnabled.collectAsStateWithLifecycle()
+    val vibrationWithVisual by viewModel.vibrationWithVisual.collectAsStateWithLifecycle()
+    val isVisualDotVisible by viewModel.isVisualDotVisible.collectAsStateWithLifecycle()
 
     // Immediate Notification Permission Request for Android 13+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -273,46 +279,6 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                     )
 
                     NavigationBarItem(
-                        selected = currentTab == PerformanceTab.CREATURE,
-                        onClick = { viewModel.setTab(PerformanceTab.CREATURE) },
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Default.RemoveRedEye,
-                                contentDescription = "Creature Eye"
-                            )
-                        },
-                        label = { Text("Creature") },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MidnightBg,
-                            selectedTextColor = ElectricCyan,
-                            indicatorColor = ElectricCyan,
-                            unselectedIconColor = TextDim,
-                            unselectedTextColor = TextDim
-                        ),
-                        modifier = Modifier.testTag("tab_creature")
-                    )
-
-                    NavigationBarItem(
-                        selected = currentTab == PerformanceTab.MENTALIST_HUD,
-                        onClick = { viewModel.setTab(PerformanceTab.MENTALIST_HUD) },
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Default.GraphicEq,
-                                contentDescription = "Telemetry Scope"
-                            )
-                        },
-                        label = { Text("Scope") },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MidnightBg,
-                            selectedTextColor = ElectricCyan,
-                            indicatorColor = ElectricCyan,
-                            unselectedIconColor = TextDim,
-                            unselectedTextColor = TextDim
-                        ),
-                        modifier = Modifier.testTag("tab_hud")
-                    )
-
-                    NavigationBarItem(
                         selected = currentTab == PerformanceTab.TUTORIAL,
                         onClick = { viewModel.setTab(PerformanceTab.TUTORIAL) },
                         icon = {
@@ -350,6 +316,9 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             smartAlarmThreshold = smartAlarmThreshold,
                             isSleepingMode = isSleepingMode,
                             liveMicroTesla = liveMicroTesla,
+                            isScreenOffModeActive = isScreenOffModeActive,
+                            isVisualModeEnabled = isVisualModeEnabled,
+                            vibrationWithVisual = vibrationWithVisual,
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
                             onSensitivityChange = { viewModel.setSensitivity(it) },
@@ -357,7 +326,10 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onToggleSmartAlarm = { viewModel.setSmartAlarmEnabled(!isSmartAlarmEnabled) },
                             onSmartAlarmThresholdChange = { viewModel.setSmartAlarmThreshold(it) },
                             onToggleSleepingMode = { viewModel.toggleSleepingMode() },
-                            onNavigateBack = { viewModel.setTab(PerformanceTab.CREATURE) },
+                            onToggleScreenOffMode = { viewModel.setScreenOffMode(it) },
+                            onToggleVisualMode = { viewModel.setVisualModeEnabled(it) },
+                            onToggleVibrationWithVisual = { viewModel.setVibrationWithVisual(it) },
+                            onNavigateBack = {},
                             onOpenTutorial = { viewModel.setTab(PerformanceTab.TUTORIAL) }
                         )
                     }
@@ -367,56 +339,16 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onNavigateBack = { viewModel.setTab(PerformanceTab.SETTINGS) }
                         )
                     }
-
-                    PerformanceTab.CREATURE -> {
-                        CreatureScreen(
-                            creatureState = creatureState,
-                            reading = reading,
-                            effectiveThreshold = effectiveThreshold,
-                            fogLevel = fogLevel,
-                            rumbleMode = rumbleMode,
-                            isPoweredOn = isPoweredOn,
-                            isStealthActive = isStealthActive,
-                            onTogglePower = { viewModel.togglePower() },
-                            onFogChange = { viewModel.setFogLevel(it) },
-                            onSelectRumbleMode = { viewModel.setRumbleMode(it) },
-                            onToggleStealth = { viewModel.setStealth(!isStealthActive) },
-                            onOpenSettings = { viewModel.setTab(PerformanceTab.SETTINGS) },
-                            onTareBaseline = { viewModel.tareBaseline() },
-                            onTestHaptic = { viewModel.testHaptic() }
-                        )
-                    }
-
-                    PerformanceTab.MENTALIST_HUD -> {
-                        MentalistHudScreen(
-                            reading = reading,
-                            creatureState = creatureState,
-                            effectiveThreshold = effectiveThreshold,
-                            onTareBaseline = { viewModel.tareBaseline() }
-                        )
-                    }
-
-                    PerformanceTab.LOG_REHEARSAL -> {
-                        EventLogScreen(
-                            events = recentEvents,
-                            onClearEvents = { viewModel.clearHistory() }
-                        )
-                    }
                 }
             }
         }
 
-        // Full Screen Stealth Overlay (OLED True Black)
-        AnimatedVisibility(
-            visible = isStealthActive,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            StealthOverlay(
-                creatureState = creatureState,
-                showMicroDot = stealthMicroDot,
-                onExitStealth = { viewModel.setStealth(false) },
-                onTareBaseline = { viewModel.tareBaseline() }
+        // Screen Off Mode (Pitch Black Immersive Mode)
+        if (isScreenOffModeActive) {
+            PitchBlackImmersiveOverlay(
+                isVisualModeEnabled = isVisualModeEnabled,
+                isVisualDotVisible = isVisualDotVisible,
+                onExit = { viewModel.setScreenOffMode(false) }
             )
         }
 

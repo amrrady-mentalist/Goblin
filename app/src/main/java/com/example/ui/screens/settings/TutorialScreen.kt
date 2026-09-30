@@ -160,6 +160,20 @@ fun TutorialScreen(
                 body = "Turn off 'Activate sensor' first, then switch on 'Sleeping Mode'. Put the phone in your pocket.\nTo start the trick covertly during your routine, wave your magnetic ring or prop against your pocket: the phone will buzz 3 times to confirm it is awake and active!"
             )
 
+            // Setting 6: Screen Off Mode
+            TutorialStepItem(
+                icon = Icons.Default.Speed,
+                title = "6. Screen Off Mode (Pitch Black)",
+                body = "Turns the phone into a pitch-black screen in immersive mode so it looks completely locked while the detection engine runs in the background.\nTo return to the normal app, simply swipe down with 2 fingers anywhere on the black screen."
+            )
+
+            // Setting 7: Visual Mode (Tiny Green Dot)
+            TutorialStepItem(
+                icon = Icons.Default.CheckCircle,
+                title = "7. Visual Mode (Tiny Green Dot)",
+                body = "If you cannot feel or rely on vibrations, enable Visual Mode. A very tiny green dot will appear on the top-left corner of the black screen whenever a magnet is detected. You can enable vibrations as well or mute them for silent visual cueing."
+            )
+
             Spacer(modifier = Modifier.height(20.dp))
         }
     }
