@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,6 +59,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -573,33 +576,47 @@ fun ExactSettingsScreen(
                             fontWeight = FontWeight.Medium
                         )
 
-                        // Pattern Selector Chips for Baseline
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            UtBaselinePattern.values().forEach { pattern ->
-                                val isSelected = utBaselinePattern == pattern
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) YellowAccent else Color.White)
-                                        .border(
-                                            1.dp,
-                                            if (isSelected) YellowAccent else Color(0xFFCBD5E1),
-                                            RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { onUtBaselinePatternChange(pattern) }
-                                        .padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
+                        // Pattern Selector Chips for Baseline (wrapped 3-per-row so
+                        // longer labels like "Ghost Tick" have room to breathe)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            UtBaselinePattern.values().toList().chunked(3).forEach { rowPatterns ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = pattern.displayName,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) Color.Black else Color(0xFF334155)
-                                    )
+                                    rowPatterns.forEach { pattern ->
+                                        val isSelected = utBaselinePattern == pattern
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 44.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) YellowAccent else Color.White)
+                                                .border(
+                                                    1.dp,
+                                                    if (isSelected) YellowAccent else Color(0xFFCBD5E1),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable { onUtBaselinePatternChange(pattern) }
+                                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = pattern.displayName,
+                                                fontSize = 11.sp,
+                                                lineHeight = 13.sp,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) Color.Black else Color(0xFF334155)
+                                            )
+                                        }
+                                    }
+                                    // Pad out the last row so its chips stay the same width as a full row
+                                    repeat(3 - rowPatterns.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }
@@ -675,34 +692,46 @@ fun ExactSettingsScreen(
                             fontWeight = FontWeight.Medium
                         )
 
-                        // Pattern Selector Chips for Peak
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            UtPeakPattern.values().forEach { pattern ->
-                                val isSelected = utPeakPattern == pattern
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) Color(0xFFDC2626) else Color.White)
-                                        .border(
-                                            1.dp,
-                                            if (isSelected) Color(0xFFDC2626) else Color(0xFFCBD5E1),
-                                            RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { onUtPeakPatternChange(pattern) }
-                                        .padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
+                        // Pattern Selector Chips for Peak (wrapped 2-per-row — these
+                        // labels, e.g. "Double Heavy Strike", are the longest in the app)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            UtPeakPattern.values().toList().chunked(2).forEach { rowPatterns ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = pattern.displayName,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) Color.White else Color(0xFF334155),
-                                        maxLines = 1
-                                    )
+                                    rowPatterns.forEach { pattern ->
+                                        val isSelected = utPeakPattern == pattern
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 44.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) Color(0xFFDC2626) else Color.White)
+                                                .border(
+                                                    1.dp,
+                                                    if (isSelected) Color(0xFFDC2626) else Color(0xFFCBD5E1),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable { onUtPeakPatternChange(pattern) }
+                                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = pattern.displayName,
+                                                fontSize = 11.sp,
+                                                lineHeight = 13.sp,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) Color.White else Color(0xFF334155)
+                                            )
+                                        }
+                                    }
+                                    repeat(2 - rowPatterns.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }
