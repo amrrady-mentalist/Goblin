@@ -69,6 +69,9 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     // Live state of the tiny green dot
     private val _isVisualDotVisible = MutableStateFlow(false)
     val isVisualDotVisible: StateFlow<Boolean> = _isVisualDotVisible.asStateFlow()
+    // Bumped on every strike so a stale auto-hide timer from an earlier strike
+    // can't turn the dot off after a newer strike already re-lit it.
+    private var visualDotGeneration = 0
 
     // Dual-Tier µT Threshold Vibration Control
     private val _isUtTriggerEnabled = MutableStateFlow(true)
@@ -209,10 +212,15 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
                 // 1. If in Screen Off Mode OR Visual Mode is enabled, light up green dot
                 if (_isScreenOffModeActive.value || _isVisualModeEnabled.value) {
+                    visualDotGeneration++
+                    val myGeneration = visualDotGeneration
                     _isVisualDotVisible.value = true
                     launch {
                         delay(2200L)
-                        _isVisualDotVisible.value = false
+                        // Only turn it off if no newer strike has re-lit it since
+                        if (visualDotGeneration == myGeneration) {
+                            _isVisualDotVisible.value = false
+                        }
                     }
                 }
 
@@ -231,24 +239,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     durationMs = 250L
                 )
                 repository.logDetectionEvent(event)
-            }
-        }
-
-        // Real-time observation during Screen Off Mode to guarantee visual dot cue
-        viewModelScope.launch {
-            sensorEngine.readingState.collectLatest { reading ->
-                if (_isScreenOffModeActive.value) {
-                    val threshold = sensorEngine.calculateEffectiveThreshold()
-                    if (reading.deltaMagnitude >= threshold) {
-                        if (_isVisualModeEnabled.value && !_isVisualDotVisible.value) {
-                            _isVisualDotVisible.value = true
-                            launch {
-                                delay(2200L)
-                                _isVisualDotVisible.value = false
-                            }
-                        }
-                    }
-                }
             }
         }
 
