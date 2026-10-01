@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.DetectionEventEntity
 import com.example.data.local.GoblinDatabase
+import com.example.data.local.GoblinPreferences
 import com.example.data.local.GoblinRepository
 import com.example.data.local.VenueProfileEntity
 import com.example.domain.model.CreatureState
@@ -14,7 +15,7 @@ import com.example.domain.model.MagneticReading
 import com.example.domain.model.RumbleMode
 import com.example.domain.model.VibrationStrength
 import com.example.haptics.DiscreetHapticEngine
-import com.example.notification.DetectionNotificationManager
+import com.example.notification.FakeCallNotificationHelper
 import com.example.sensor.MagneticSensorEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +36,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     private val repository: GoblinRepository
     val sensorEngine: MagneticSensorEngine
     val hapticEngine: DiscreetHapticEngine
-    val notificationManager: DetectionNotificationManager
+    val preferences: GoblinPreferences
 
     val readingState: StateFlow<MagneticReading>
     val creatureState: StateFlow<CreatureState>
@@ -62,6 +63,10 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     // Vibration with Visual Mode (use both vibration and visual or visual only)
     private val _vibrationWithVisual = MutableStateFlow(true)
     val vibrationWithVisual: StateFlow<Boolean> = _vibrationWithVisual.asStateFlow()
+
+    // Smartwatch Silent Call Alert (vibrates Garmin, Amazfit, Huawei, etc.)
+    private val _isSmartwatchCallEnabled = MutableStateFlow(true)
+    val isSmartwatchCallEnabled: StateFlow<Boolean> = _isSmartwatchCallEnabled.asStateFlow()
 
     // Live state of the tiny green dot
     private val _isVisualDotVisible = MutableStateFlow(false)
@@ -117,7 +122,37 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         repository = GoblinRepository(database.dao())
         sensorEngine = MagneticSensorEngine(application, viewModelScope)
         hapticEngine = DiscreetHapticEngine(application)
-        notificationManager = DetectionNotificationManager(application)
+        preferences = GoblinPreferences(application)
+
+        // Restore persisted user settings
+        sensorEngine.setTrickRunning(preferences.isTrickRunning)
+        sensorEngine.setPower(preferences.isSensorPower)
+        sensorEngine.setSensitivity(preferences.sensitivity)
+        sensorEngine.setAdaptiveSensitivity(preferences.adaptiveSensitivity)
+        sensorEngine.setSmartAlarmEnabled(preferences.isSmartAlarmEnabled)
+        sensorEngine.setSmartAlarmThreshold(preferences.smartAlarmThreshold)
+        sensorEngine.setSleepingMode(preferences.isSleepingMode)
+        sensorEngine.setLocatorMode(
+            try {
+                LocatorMode.valueOf(preferences.locatorModeName)
+            } catch (e: Exception) {
+                LocatorMode.PROXIMITY_50CM
+            }
+        )
+
+        _isVisualModeEnabled.value = preferences.isVisualModeEnabled
+        _vibrationWithVisual.value = preferences.vibrationWithVisual
+        _isSmartwatchCallEnabled.value = preferences.isSmartwatchCallEnabled
+        _hapticType.value = try {
+            HapticFeedbackType.valueOf(preferences.hapticTypeName)
+        } catch (e: Exception) {
+            HapticFeedbackType.DOUBLE_STRONG
+        }
+        _vibrationStrength.value = try {
+            VibrationStrength.valueOf(preferences.vibrationStrengthName)
+        } catch (e: Exception) {
+            VibrationStrength.MEDIUM
+        }
 
         readingState = sensorEngine.readingState
         creatureState = sensorEngine.creatureState
@@ -160,18 +195,19 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
-                // 2. Play vibration if Visual Mode is disabled OR vibrationWithVisual is active
+                // 2. Play phone vibration if Visual Mode is disabled OR vibrationWithVisual is active
                 if (!_isVisualModeEnabled.value || _vibrationWithVisual.value) {
                     hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
                 }
 
-                // Send immediate local notification with Hand Arc context
-                notificationManager.sendImmediateDetectionNotification(
-                    deltaMagnitude = reading.deltaMagnitude,
-                    dominantDirection = reading.dominantDirection,
-                    isRoomWide = _isRoomWideMode.value,
-                    isHandArc = reading.isHandArcDetected || (sensorEngine.locatorMode.value == LocatorMode.Y_AXIS_VERTICAL)
-                )
+                // 3. Smartwatch Call Alert: Vibrate connected smartwatch via silent incoming call notification
+                if (_isSmartwatchCallEnabled.value) {
+                    FakeCallNotificationHelper.startFakeCall(application)
+                    launch {
+                        delay(1600L) // Buzz watch for 1.6 seconds
+                        FakeCallNotificationHelper.stopFakeCall(application)
+                    }
+                }
 
                 // Log detection event
                 val event = DetectionEventEntity(
@@ -186,16 +222,25 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        // Real-time observation during Screen Off Mode to guarantee visual dot cue
+        // Real-time observation during Screen Off Mode to guarantee visual dot cue and smartwatch buzz
         viewModelScope.launch {
             sensorEngine.readingState.collectLatest { reading ->
-                if (_isScreenOffModeActive.value && _isVisualModeEnabled.value) {
+                if (_isScreenOffModeActive.value) {
                     val threshold = sensorEngine.calculateEffectiveThreshold()
-                    if (reading.deltaMagnitude >= threshold && !_isVisualDotVisible.value) {
-                        _isVisualDotVisible.value = true
-                        launch {
-                            delay(2200L)
-                            _isVisualDotVisible.value = false
+                    if (reading.deltaMagnitude >= threshold) {
+                        if (_isVisualModeEnabled.value && !_isVisualDotVisible.value) {
+                            _isVisualDotVisible.value = true
+                            launch {
+                                delay(2200L)
+                                _isVisualDotVisible.value = false
+                            }
+                        }
+                        if (_isSmartwatchCallEnabled.value && !FakeCallNotificationHelper.isFakeCallActive()) {
+                            FakeCallNotificationHelper.startFakeCall(application)
+                            launch {
+                                delay(1600L)
+                                FakeCallNotificationHelper.stopFakeCall(application)
+                            }
                         }
                     }
                 }
@@ -240,34 +285,42 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setTrickRunning(running: Boolean) {
         sensorEngine.setTrickRunning(running)
+        preferences.isTrickRunning = running
     }
 
     fun toggleTrick() {
         sensorEngine.toggleTrick()
+        preferences.isTrickRunning = sensorEngine.isTrickRunning.value
     }
 
     fun setSensitivity(value: Float) {
         sensorEngine.setSensitivity(value)
+        preferences.sensitivity = sensorEngine.sensitivity.value
     }
 
     fun setAdaptiveSensitivity(value: Int) {
         sensorEngine.setAdaptiveSensitivity(value)
+        preferences.adaptiveSensitivity = value
     }
 
     fun setSmartAlarmEnabled(enabled: Boolean) {
         sensorEngine.setSmartAlarmEnabled(enabled)
+        preferences.isSmartAlarmEnabled = enabled
     }
 
     fun setSmartAlarmThreshold(thresh: Float) {
         sensorEngine.setSmartAlarmThreshold(thresh)
+        preferences.smartAlarmThreshold = thresh
     }
 
     fun setSleepingMode(sleeping: Boolean) {
         sensorEngine.setSleepingMode(sleeping)
+        preferences.isSleepingMode = sleeping
     }
 
     fun toggleSleepingMode() {
         sensorEngine.toggleSleepingMode()
+        preferences.isSleepingMode = sensorEngine.isSleepingMode.value
     }
 
     fun setScreenOffMode(active: Boolean) {
@@ -280,18 +333,35 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setVisualModeEnabled(enabled: Boolean) {
         _isVisualModeEnabled.value = enabled
+        preferences.isVisualModeEnabled = enabled
     }
 
     fun setVibrationWithVisual(enabled: Boolean) {
         _vibrationWithVisual.value = enabled
+        preferences.vibrationWithVisual = enabled
+    }
+
+    fun setSmartwatchCallEnabled(enabled: Boolean) {
+        _isSmartwatchCallEnabled.value = enabled
+        preferences.isSmartwatchCallEnabled = enabled
+    }
+
+    fun testSmartwatchCall() {
+        FakeCallNotificationHelper.startFakeCall(getApplication())
+        viewModelScope.launch {
+            delay(2000L)
+            FakeCallNotificationHelper.stopFakeCall(getApplication())
+        }
     }
 
     fun setPower(on: Boolean) {
         sensorEngine.setPower(on)
+        preferences.isSensorPower = on
     }
 
     fun togglePower() {
         sensorEngine.togglePower()
+        preferences.isSensorPower = sensorEngine.isPoweredOn.value
     }
 
     fun setRoomWideMode(enabled: Boolean) {
@@ -306,16 +376,19 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setLocatorMode(mode: LocatorMode) {
         sensorEngine.setLocatorMode(mode)
+        preferences.locatorModeName = mode.name
     }
 
     fun toggleLocatorMode() {
         sensorEngine.toggleLocatorMode()
+        preferences.locatorModeName = sensorEngine.locatorMode.value.name
     }
 
     fun setRumbleMode(mode: RumbleMode) {
         _rumbleMode.value = mode
         _hapticType.value = mode.hapticType
         hapticEngine.hapticType = mode.hapticType
+        preferences.hapticTypeName = mode.hapticType.name
     }
 
     fun setTargetStrengthWindow(minPercent: Int, maxPercent: Int) {
@@ -352,11 +425,13 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     fun setHapticType(type: HapticFeedbackType) {
         _hapticType.value = type
         hapticEngine.hapticType = type
+        preferences.hapticTypeName = type.name
     }
 
     fun setVibrationStrength(strength: VibrationStrength) {
         _vibrationStrength.value = strength
         hapticEngine.strength = strength
+        preferences.vibrationStrengthName = strength.name
     }
 
     fun setStealth(active: Boolean) {
@@ -435,6 +510,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         super.onCleared()
+        FakeCallNotificationHelper.stopFakeCall(getApplication())
         sensorEngine.stopListening()
     }
 }

@@ -67,15 +67,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.GoblinViewModel
 import com.example.ui.PerformanceTab
-import com.example.ui.screens.creature.CreatureScreen
-import com.example.ui.screens.hud.MentalistHudScreen
-import com.example.ui.screens.log.EventLogScreen
 import com.example.ui.screens.settings.ExactSettingsScreen
 import com.example.ui.screens.settings.SettingsSheet
 import com.example.ui.screens.settings.TutorialScreen
 import com.example.ui.screens.splash.SplashScreen
 import com.example.ui.screens.stealth.PitchBlackImmersiveOverlay
-import com.example.ui.screens.stealth.StealthOverlay
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.MidnightBg
 import com.example.ui.theme.MidnightCard
@@ -156,6 +152,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val isScreenOffModeActive by viewModel.isScreenOffModeActive.collectAsStateWithLifecycle()
     val isVisualModeEnabled by viewModel.isVisualModeEnabled.collectAsStateWithLifecycle()
     val vibrationWithVisual by viewModel.vibrationWithVisual.collectAsStateWithLifecycle()
+    val isSmartwatchCallEnabled by viewModel.isSmartwatchCallEnabled.collectAsStateWithLifecycle()
     val isVisualDotVisible by viewModel.isVisualDotVisible.collectAsStateWithLifecycle()
 
     // Immediate Notification Permission Request for Android 13+
@@ -321,6 +318,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             isScreenOffModeActive = isScreenOffModeActive,
                             isVisualModeEnabled = isVisualModeEnabled,
                             vibrationWithVisual = vibrationWithVisual,
+                            isSmartwatchCallEnabled = isSmartwatchCallEnabled,
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
                             onSensitivityChange = { viewModel.setSensitivity(it) },
@@ -331,6 +329,8 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onToggleScreenOffMode = { viewModel.setScreenOffMode(it) },
                             onToggleVisualMode = { viewModel.setVisualModeEnabled(it) },
                             onToggleVibrationWithVisual = { viewModel.setVibrationWithVisual(it) },
+                            onToggleSmartwatchCall = { viewModel.setSmartwatchCallEnabled(it) },
+                            onTestSmartwatchCall = { viewModel.testSmartwatchCall() },
                             onNavigateBack = {},
                             onOpenTutorial = { viewModel.setTab(PerformanceTab.TUTORIAL) }
                         )
