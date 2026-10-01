@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Speed
@@ -65,7 +66,7 @@ fun TutorialScreen(
         TopAppBar(
             title = {
                 Text(
-                    text = "Video Tutorial & Guide",
+                    text = "Performance & Setup Guide",
                     color = TextTitleColor,
                     fontSize = 19.sp,
                     fontWeight = FontWeight.SemiBold
@@ -92,7 +93,7 @@ fun TutorialScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Video Tutorial Card banner
+            // Performance Guide Card banner
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                 shape = RoundedCornerShape(12.dp),
@@ -104,8 +105,8 @@ fun TutorialScreen(
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.PlayCircleFilled,
-                        contentDescription = "Video Tutorial",
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Performance Guide",
                         tint = YellowAccent,
                         modifier = Modifier.size(44.dp)
                     )

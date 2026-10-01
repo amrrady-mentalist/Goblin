@@ -23,7 +23,6 @@ class GoblinPreferences(context: Context) {
         private const val KEY_SLEEPING_MODE = "key_sleeping_mode"
         private const val KEY_VISUAL_MODE_ENABLED = "key_visual_mode_enabled"
         private const val KEY_VIBRATION_WITH_VISUAL = "key_vibration_with_visual"
-        private const val KEY_SMARTWATCH_CALL_ENABLED = "key_smartwatch_call_enabled"
         private const val KEY_LOCATOR_MODE = "key_locator_mode"
         private const val KEY_HAPTIC_TYPE = "key_haptic_type"
         private const val KEY_VIBRATION_STRENGTH = "key_vibration_strength"
@@ -64,10 +63,6 @@ class GoblinPreferences(context: Context) {
     var vibrationWithVisual: Boolean
         get() = prefs.getBoolean(KEY_VIBRATION_WITH_VISUAL, true)
         set(value) = prefs.edit().putBoolean(KEY_VIBRATION_WITH_VISUAL, value).apply()
-
-    var isSmartwatchCallEnabled: Boolean
-        get() = prefs.getBoolean(KEY_SMARTWATCH_CALL_ENABLED, true)
-        set(value) = prefs.edit().putBoolean(KEY_SMARTWATCH_CALL_ENABLED, value).apply()
 
     var locatorModeName: String
         get() = prefs.getString(KEY_LOCATOR_MODE, "PROXIMITY_50CM") ?: "PROXIMITY_50CM"

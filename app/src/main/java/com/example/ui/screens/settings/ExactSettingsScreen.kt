@@ -84,7 +84,6 @@ fun ExactSettingsScreen(
     isScreenOffModeActive: Boolean = false,
     isVisualModeEnabled: Boolean = false,
     vibrationWithVisual: Boolean = true,
-    isSmartwatchCallEnabled: Boolean = true,
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
@@ -95,8 +94,6 @@ fun ExactSettingsScreen(
     onToggleScreenOffMode: (Boolean) -> Unit = {},
     onToggleVisualMode: (Boolean) -> Unit = {},
     onToggleVibrationWithVisual: (Boolean) -> Unit = {},
-    onToggleSmartwatchCall: (Boolean) -> Unit = {},
-    onTestSmartwatchCall: () -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onOpenTutorial: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -262,7 +259,7 @@ fun ExactSettingsScreen(
                 )
 
                 Text(
-                    text = "Swipe right to increase reading distance, swipe left to avoid false positives. If the phone vibrates when it is not moving and there is not a manget close to it, then swipe left. (More info in the video tutorial).",
+                    text = "Swipe right to increase reading distance, swipe left to avoid false positives. If the phone vibrates when it is not moving and there is not a magnet close to it, then swipe left.",
                     color = TextDescColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -296,7 +293,7 @@ fun ExactSettingsScreen(
                 )
 
                 Text(
-                    text = "Swipe right to increase reading distance, swipe left to increase freedom of movement. If the phone vibrates when it is moving and there is not a manget close to it, then swipe left.\n(More info in the video tutorial)",
+                    text = "Swipe right to increase reading distance, swipe left to increase freedom of movement. If the phone vibrates when it is moving and there is not a magnet close to it, then swipe left.",
                     color = TextDescColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -420,7 +417,7 @@ fun ExactSettingsScreen(
                 }
 
                 Text(
-                    text = "When this mode is active the App will remain inactive, to activate bring a magnet close tho the phone until you feel the vibrations. In order to be able to change the status of the \"sleeping mode\", the \"activate sensor\" status must be turned off\n(More info in the video tutorial)",
+                    text = "When this mode is active the App will remain inactive. To activate, bring a magnet close to the phone until you feel the vibrations. In order to change the status of \"sleeping mode\", the \"activate sensor\" status must be turned off first.",
                     color = TextDescColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -560,65 +557,6 @@ fun ExactSettingsScreen(
                         fontSize = 12.sp,
                         lineHeight = 16.sp
                     )
-                }
-
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
-
-                // 10. Smartwatch Relay (Silent Call for Garmin, Amazfit, Huawei, etc.)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Smartwatch Relay (Silent Call)",
-                            color = TextTitleColor,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Normal
-                        )
-                        Text(
-                            text = "Triggers a silent incoming call notification on detection to buzz connected smartwatches (Garmin, Amazfit, Huawei, etc.). Phone speaker stays 100% silent.",
-                            color = TextDescColor,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Switch(
-                        checked = isSmartwatchCallEnabled,
-                        onCheckedChange = { onToggleSmartwatchCall(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = YellowAccent,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFCBD5E1)
-                        ),
-                        modifier = Modifier.testTag("smartwatch_call_switch")
-                    )
-                }
-
-                if (isSmartwatchCallEnabled) {
-                    Button(
-                        onClick = onTestSmartwatchCall,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ButtonDark,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .testTag("test_smartwatch_call_button")
-                    ) {
-                        Text(
-                            text = "Test Smartwatch Vibration (2s)",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
                 }
 
                 HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)

@@ -15,7 +15,6 @@ import com.example.domain.model.MagneticReading
 import com.example.domain.model.RumbleMode
 import com.example.domain.model.VibrationStrength
 import com.example.haptics.DiscreetHapticEngine
-import com.example.notification.FakeCallNotificationHelper
 import com.example.sensor.MagneticSensorEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,10 +62,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     // Vibration with Visual Mode (use both vibration and visual or visual only)
     private val _vibrationWithVisual = MutableStateFlow(true)
     val vibrationWithVisual: StateFlow<Boolean> = _vibrationWithVisual.asStateFlow()
-
-    // Smartwatch Silent Call Alert (vibrates Garmin, Amazfit, Huawei, etc.)
-    private val _isSmartwatchCallEnabled = MutableStateFlow(true)
-    val isSmartwatchCallEnabled: StateFlow<Boolean> = _isSmartwatchCallEnabled.asStateFlow()
 
     // Live state of the tiny green dot
     private val _isVisualDotVisible = MutableStateFlow(false)
@@ -142,7 +137,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
         _isVisualModeEnabled.value = preferences.isVisualModeEnabled
         _vibrationWithVisual.value = preferences.vibrationWithVisual
-        _isSmartwatchCallEnabled.value = preferences.isSmartwatchCallEnabled
         _hapticType.value = try {
             HapticFeedbackType.valueOf(preferences.hapticTypeName)
         } catch (e: Exception) {
@@ -200,15 +194,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
                 }
 
-                // 3. Smartwatch Call Alert: Vibrate connected smartwatch via silent incoming call notification
-                if (_isSmartwatchCallEnabled.value) {
-                    FakeCallNotificationHelper.startFakeCall(application)
-                    launch {
-                        delay(1600L) // Buzz watch for 1.6 seconds
-                        FakeCallNotificationHelper.stopFakeCall(application)
-                    }
-                }
-
                 // Log detection event
                 val event = DetectionEventEntity(
                     timestamp = reading.timestamp,
@@ -222,7 +207,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        // Real-time observation during Screen Off Mode to guarantee visual dot cue and smartwatch buzz
+        // Real-time observation during Screen Off Mode to guarantee visual dot cue
         viewModelScope.launch {
             sensorEngine.readingState.collectLatest { reading ->
                 if (_isScreenOffModeActive.value) {
@@ -233,13 +218,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                             launch {
                                 delay(2200L)
                                 _isVisualDotVisible.value = false
-                            }
-                        }
-                        if (_isSmartwatchCallEnabled.value && !FakeCallNotificationHelper.isFakeCallActive()) {
-                            FakeCallNotificationHelper.startFakeCall(application)
-                            launch {
-                                delay(1600L)
-                                FakeCallNotificationHelper.stopFakeCall(application)
                             }
                         }
                     }
@@ -339,19 +317,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     fun setVibrationWithVisual(enabled: Boolean) {
         _vibrationWithVisual.value = enabled
         preferences.vibrationWithVisual = enabled
-    }
-
-    fun setSmartwatchCallEnabled(enabled: Boolean) {
-        _isSmartwatchCallEnabled.value = enabled
-        preferences.isSmartwatchCallEnabled = enabled
-    }
-
-    fun testSmartwatchCall() {
-        FakeCallNotificationHelper.startFakeCall(getApplication())
-        viewModelScope.launch {
-            delay(2000L)
-            FakeCallNotificationHelper.stopFakeCall(getApplication())
-        }
     }
 
     fun setPower(on: Boolean) {
@@ -510,7 +475,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         super.onCleared()
-        FakeCallNotificationHelper.stopFakeCall(getApplication())
         sensorEngine.stopListening()
     }
 }
