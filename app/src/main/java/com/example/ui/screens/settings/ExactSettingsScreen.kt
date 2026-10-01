@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -354,11 +355,19 @@ fun ExactSettingsScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(4.dp))
                         .testTag("smart_alarm_value_input"),
+                    textStyle = TextStyle(
+                        color = Color(0xFF0F172A),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color(0xFF0F172A),
+                        unfocusedTextColor = Color(0xFF0F172A),
                         focusedContainerColor = InputBoxBg,
                         unfocusedContainerColor = InputBoxBg,
                         focusedBorderColor = YellowAccent,
-                        unfocusedBorderColor = Color(0xFFE2E8F0)
+                        unfocusedBorderColor = Color(0xFFCBD5E1),
+                        cursorColor = Color(0xFF0F172A)
                     )
                 )
 

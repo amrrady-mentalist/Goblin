@@ -105,17 +105,25 @@ fun PitchBlackImmersiveOverlay(
                 }
             }
     ) {
-        // Visual Mode: Very tiny green dot on the top-left corner
-        if (isVisualModeEnabled && isVisualDotVisible) {
+        // Visual Mode: Crisp discrete neon green indicator on top-left corner
+        if (isVisualDotVisible) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 8.dp, top = 8.dp)
-                    .size(5.dp)
+                    .padding(start = 24.dp, top = 24.dp)
+                    .size(16.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF00FF66)) // Discrete high-visibility neon green
-                    .testTag("visual_mode_green_dot")
-            )
+                    .background(Color(0x4400FF66)), // Discrete neon green halo
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF00FF66)) // High-visibility vivid neon green core
+                        .testTag("visual_mode_green_dot")
+                )
+            }
         }
     }
 }

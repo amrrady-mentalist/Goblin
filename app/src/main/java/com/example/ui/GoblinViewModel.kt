@@ -55,8 +55,8 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     private val _isScreenOffModeActive = MutableStateFlow(false)
     val isScreenOffModeActive: StateFlow<Boolean> = _isScreenOffModeActive.asStateFlow()
 
-    // Visual Mode (Tiny Green Dot in top-left corner)
-    private val _isVisualModeEnabled = MutableStateFlow(false)
+    // Visual Mode (Tiny Green Dot in top-left corner) - default to true
+    private val _isVisualModeEnabled = MutableStateFlow(true)
     val isVisualModeEnabled: StateFlow<Boolean> = _isVisualModeEnabled.asStateFlow()
 
     // Vibration with Visual Mode (use both vibration and visual or visual only)
@@ -151,11 +151,11 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                 // before firing it, so the pulse can't re-trigger another "strike".
                 sensorEngine.notifyHapticPulse()
 
-                // 1. If Visual Mode is enabled, light up tiny green dot
-                if (_isVisualModeEnabled.value) {
+                // 1. If in Screen Off Mode OR Visual Mode is enabled, light up green dot
+                if (_isScreenOffModeActive.value || _isVisualModeEnabled.value) {
                     _isVisualDotVisible.value = true
                     launch {
-                        delay(1200L)
+                        delay(2200L)
                         _isVisualDotVisible.value = false
                     }
                 }
@@ -183,6 +183,22 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     durationMs = 250L
                 )
                 repository.logDetectionEvent(event)
+            }
+        }
+
+        // Real-time observation during Screen Off Mode to guarantee visual dot cue
+        viewModelScope.launch {
+            sensorEngine.readingState.collectLatest { reading ->
+                if (_isScreenOffModeActive.value && _isVisualModeEnabled.value) {
+                    val threshold = sensorEngine.calculateEffectiveThreshold()
+                    if (reading.deltaMagnitude >= threshold && !_isVisualDotVisible.value) {
+                        _isVisualDotVisible.value = true
+                        launch {
+                            delay(2200L)
+                            _isVisualDotVisible.value = false
+                        }
+                    }
+                }
             }
         }
 
@@ -256,6 +272,10 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setScreenOffMode(active: Boolean) {
         _isScreenOffModeActive.value = active
+        if (active) {
+            sensorEngine.setPower(true)
+            sensorEngine.setTrickRunning(true)
+        }
     }
 
     fun setVisualModeEnabled(enabled: Boolean) {
