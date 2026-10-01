@@ -2,6 +2,8 @@ package com.example.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.domain.model.UtBaselinePattern
+import com.example.domain.model.UtPeakPattern
 
 /**
  * Manages persistent preferences for Goblin Detector.
@@ -26,6 +28,11 @@ class GoblinPreferences(context: Context) {
         private const val KEY_LOCATOR_MODE = "key_locator_mode"
         private const val KEY_HAPTIC_TYPE = "key_haptic_type"
         private const val KEY_VIBRATION_STRENGTH = "key_vibration_strength"
+        private const val KEY_UT_TRIGGER_ENABLED = "key_ut_trigger_enabled"
+        private const val KEY_UT_BASELINE_THRESH = "key_ut_baseline_thresh"
+        private const val KEY_UT_PEAK_THRESH = "key_ut_peak_thresh"
+        private const val KEY_UT_BASELINE_PATTERN = "key_ut_baseline_pattern"
+        private const val KEY_UT_PEAK_PATTERN = "key_ut_peak_pattern"
     }
 
     var isTrickRunning: Boolean
@@ -75,4 +82,38 @@ class GoblinPreferences(context: Context) {
     var vibrationStrengthName: String
         get() = prefs.getString(KEY_VIBRATION_STRENGTH, "MEDIUM") ?: "MEDIUM"
         set(value) = prefs.edit().putString(KEY_VIBRATION_STRENGTH, value).apply()
+
+    var isUtTriggerEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UT_TRIGGER_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_UT_TRIGGER_ENABLED, value).apply()
+
+    var utBaselineThreshold: Int
+        get() = prefs.getInt(KEY_UT_BASELINE_THRESH, 45)
+        set(value) = prefs.edit().putInt(KEY_UT_BASELINE_THRESH, value).apply()
+
+    var utPeakThreshold: Int
+        get() = prefs.getInt(KEY_UT_PEAK_THRESH, 90)
+        set(value) = prefs.edit().putInt(KEY_UT_PEAK_THRESH, value).apply()
+
+    var utBaselinePattern: UtBaselinePattern
+        get() {
+            val name = prefs.getString(KEY_UT_BASELINE_PATTERN, UtBaselinePattern.SINGLE_PULSE.name)
+            return try {
+                UtBaselinePattern.valueOf(name ?: UtBaselinePattern.SINGLE_PULSE.name)
+            } catch (e: Exception) {
+                UtBaselinePattern.SINGLE_PULSE
+            }
+        }
+        set(value) = prefs.edit().putString(KEY_UT_BASELINE_PATTERN, value.name).apply()
+
+    var utPeakPattern: UtPeakPattern
+        get() {
+            val name = prefs.getString(KEY_UT_PEAK_PATTERN, UtPeakPattern.CONTINUOUS.name)
+            return try {
+                UtPeakPattern.valueOf(name ?: UtPeakPattern.CONTINUOUS.name)
+            } catch (e: Exception) {
+                UtPeakPattern.CONTINUOUS
+            }
+        }
+        set(value) = prefs.edit().putString(KEY_UT_PEAK_PATTERN, value.name).apply()
 }

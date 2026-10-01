@@ -22,6 +22,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import com.example.domain.model.UtBaselinePattern
+import com.example.domain.model.UtPeakPattern
+import com.example.domain.model.UtTriggerTier
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -84,6 +87,12 @@ fun ExactSettingsScreen(
     isScreenOffModeActive: Boolean = false,
     isVisualModeEnabled: Boolean = false,
     vibrationWithVisual: Boolean = true,
+    isUtTriggerEnabled: Boolean = true,
+    utBaselineThreshold: Int = 45,
+    utPeakThreshold: Int = 90,
+    utBaselinePattern: UtBaselinePattern = UtBaselinePattern.SINGLE_PULSE,
+    utPeakPattern: UtPeakPattern = UtPeakPattern.CONTINUOUS,
+    activeUtTier: UtTriggerTier = UtTriggerTier.IDLE,
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
@@ -94,6 +103,13 @@ fun ExactSettingsScreen(
     onToggleScreenOffMode: (Boolean) -> Unit = {},
     onToggleVisualMode: (Boolean) -> Unit = {},
     onToggleVibrationWithVisual: (Boolean) -> Unit = {},
+    onToggleUtTrigger: (Boolean) -> Unit = {},
+    onUtBaselineThresholdChange: (Int) -> Unit = {},
+    onUtPeakThresholdChange: (Int) -> Unit = {},
+    onUtBaselinePatternChange: (UtBaselinePattern) -> Unit = {},
+    onUtPeakPatternChange: (UtPeakPattern) -> Unit = {},
+    onTestUtBaselinePattern: () -> Unit = {},
+    onTestUtPeakPattern: () -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onOpenTutorial: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -425,7 +441,7 @@ fun ExactSettingsScreen(
 
                 HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
 
-                // 7. MicroTesla Value Section
+                // 7. MicroTesla Value Section & Dual-Tier Vibration Triggers
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -440,13 +456,276 @@ fun ExactSettingsScreen(
                         fontWeight = FontWeight.Normal
                     )
 
-                    Text(
-                        text = "$liveMicroTesla µT",
-                        color = TextTitleColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.testTag("microtesla_value_text")
+                    val badgeBg = when (activeUtTier) {
+                        UtTriggerTier.PEAK_ACTIVE -> Color(0xFFDC2626)
+                        UtTriggerTier.BASELINE_ACTIVE -> YellowAccent
+                        UtTriggerTier.IDLE -> Color(0xFF0F172A)
+                    }
+                    val badgeTextColor = if (activeUtTier == UtTriggerTier.BASELINE_ACTIVE) Color.Black else Color.White
+                    val badgeLabel = when (activeUtTier) {
+                        UtTriggerTier.PEAK_ACTIVE -> "🔴 $liveMicroTesla µT (PEAK BUZZ)"
+                        UtTriggerTier.BASELINE_ACTIVE -> "🟡 $liveMicroTesla µT (BASE HIT)"
+                        UtTriggerTier.IDLE -> "$liveMicroTesla µT"
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(badgeBg)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .testTag("microtesla_value_badge"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = badgeLabel,
+                            color = badgeTextColor,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // µT Threshold Control Switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "µT Dual-Tier Threshold Control",
+                            color = TextTitleColor,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Control vibration patterns based on the exact µT value (e.g. 1 pulse at 45 µT, and continuous vibration at 90 µT until it drops below).",
+                            color = TextDescColor,
+                            fontSize = 13.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = isUtTriggerEnabled,
+                        onCheckedChange = onToggleUtTrigger,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = YellowAccent,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = Color(0xFFCBD5E1)
+                        ),
+                        modifier = Modifier.testTag("ut_trigger_switch")
                     )
+                }
+
+                if (isUtTriggerEnabled) {
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Base Line Threshold Configuration Card
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF8FAFC))
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Base Line Trigger Threshold",
+                                color = Color(0xFF0F172A),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "$utBaselineThreshold µT",
+                                color = YellowAccent,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Slider(
+                            value = utBaselineThreshold.toFloat(),
+                            onValueChange = { onUtBaselineThresholdChange(it.toInt()) },
+                            valueRange = 25f..120f,
+                            steps = 18,
+                            colors = SliderDefaults.colors(
+                                thumbColor = YellowAccent,
+                                activeTrackColor = YellowAccent,
+                                inactiveTrackColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.testTag("ut_baseline_slider")
+                        )
+
+                        Text(
+                            text = "Attached Base Pattern:",
+                            color = Color(0xFF475569),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        // Pattern Selector Chips for Baseline
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            UtBaselinePattern.values().forEach { pattern ->
+                                val isSelected = utBaselinePattern == pattern
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) YellowAccent else Color.White)
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) YellowAccent else Color(0xFFCBD5E1),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable { onUtBaselinePatternChange(pattern) }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = pattern.displayName,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) Color.Black else Color(0xFF334155)
+                                    )
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = onTestUtBaselinePattern,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ButtonDark,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp)
+                                .testTag("test_ut_baseline_button")
+                        ) {
+                            Text(
+                                text = "Test Base Vibration (${utBaselinePattern.displayName})",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Peak Threshold Configuration Card
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF8FAFC))
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Peak Trigger Threshold",
+                                color = Color(0xFF0F172A),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "$utPeakThreshold µT",
+                                color = Color(0xFFDC2626),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Slider(
+                            value = utPeakThreshold.toFloat(),
+                            onValueChange = { onUtPeakThresholdChange(it.toInt()) },
+                            valueRange = 50f..250f,
+                            steps = 19,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFFDC2626),
+                                activeTrackColor = Color(0xFFDC2626),
+                                inactiveTrackColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.testTag("ut_peak_slider")
+                        )
+
+                        Text(
+                            text = "Attached Peak Pattern:",
+                            color = Color(0xFF475569),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        // Pattern Selector Chips for Peak
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            UtPeakPattern.values().forEach { pattern ->
+                                val isSelected = utPeakPattern == pattern
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) Color(0xFFDC2626) else Color.White)
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) Color(0xFFDC2626) else Color(0xFFCBD5E1),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable { onUtPeakPatternChange(pattern) }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = pattern.displayName,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) Color.White else Color(0xFF334155),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = onTestUtPeakPattern,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFDC2626),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp)
+                                .testTag("test_ut_peak_button")
+                        ) {
+                            Text(
+                                text = "Test Peak Vibration (${utPeakPattern.displayName})",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
 
                 HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)

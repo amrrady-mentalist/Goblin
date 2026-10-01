@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Vibration
@@ -388,7 +387,7 @@ fun SettingsSheet(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.NotificationsActive,
+                            imageVector = Icons.Default.Vibration,
                             contentDescription = "Test Cue",
                             modifier = Modifier.size(14.dp)
                         )

@@ -7,6 +7,8 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import com.example.domain.model.HapticFeedbackType
+import com.example.domain.model.UtBaselinePattern
+import com.example.domain.model.UtPeakPattern
 import com.example.domain.model.VibrationStrength
 import kotlin.math.min
 
@@ -152,6 +154,100 @@ class DiscreetHapticEngine(private val context: Context) {
         } else {
             @Suppress("DEPRECATION")
             vib.vibrate(longArrayOf(0, 100, 70, 100, 70, 160), -1)
+        }
+    }
+
+    // --- µT Dual-Tier Threshold Vibrations ---
+
+    @Volatile
+    private var isContinuousRunning = false
+
+    fun isContinuousActive(): Boolean = isContinuousRunning
+
+    fun startContinuousVibration() {
+        if (!isEnabled) return
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        if (isContinuousRunning) return
+        isContinuousRunning = true
+
+        val amp = (255 * strength.multiplier).toInt().coerceIn(160, 255)
+        // Repeat index 0: cycles indefinitely until cancelled
+        val timings = longArrayOf(0, 1200, 150)
+        val amplitudes = intArrayOf(0, amp, 0)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vib.hasAmplitudeControl()) {
+            vib.vibrate(VibrationEffect.createWaveform(timings, amplitudes, 0))
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(longArrayOf(0, 1200, 150), 0)
+        }
+    }
+
+    fun stopContinuousVibration() {
+        if (isContinuousRunning) {
+            isContinuousRunning = false
+            vibrator?.cancel()
+        }
+    }
+
+    fun playSinglePulse() {
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        val amp = (255 * strength.multiplier).toInt().coerceIn(160, 255)
+        vibrateOneShot(vib, 150L, amp)
+    }
+
+    fun playTwoPulses() {
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        val amp = (255 * strength.multiplier).toInt().coerceIn(160, 255)
+        val timings = longArrayOf(0, 120, 80, 120)
+        val amplitudes = intArrayOf(0, amp, 0, amp)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vib.hasAmplitudeControl()) {
+            vib.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(timings, -1)
+        }
+    }
+
+    fun playThreePulses() {
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        val amp = (255 * strength.multiplier).toInt().coerceIn(160, 255)
+        val timings = longArrayOf(0, 100, 70, 100, 70, 130)
+        val amplitudes = intArrayOf(0, amp, 0, amp, 0, amp)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vib.hasAmplitudeControl()) {
+            vib.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(timings, -1)
+        }
+    }
+
+    fun playUtBaselinePattern(pattern: UtBaselinePattern) {
+        if (!isEnabled) return
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        when (pattern) {
+            UtBaselinePattern.SINGLE_PULSE -> playSinglePulse()
+            UtBaselinePattern.DOUBLE_PULSE -> playTwoPulses()
+            UtBaselinePattern.TRIPLE_PULSE -> playThreePulses()
+            UtBaselinePattern.HEARTBEAT -> playHeartbeat(vib)
+            UtBaselinePattern.GHOST_TAP -> playGhostTap(vib)
+        }
+    }
+
+    fun playUtPeakPattern(pattern: UtPeakPattern) {
+        if (!isEnabled) return
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        when (pattern) {
+            UtPeakPattern.CONTINUOUS -> startContinuousVibration()
+            UtPeakPattern.RAPID_STUTTER -> playSaturationAlarm()
+            UtPeakPattern.TRIPLE_HEAVY -> playThreePulses()
+            UtPeakPattern.DOUBLE_STRONG -> playDoubleStrong(vib)
         }
     }
 }

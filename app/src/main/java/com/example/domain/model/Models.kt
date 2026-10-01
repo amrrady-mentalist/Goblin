@@ -113,3 +113,25 @@ data class MagneticReading(
             }
         }
 }
+
+enum class UtBaselinePattern(val displayName: String, val subtitle: String) {
+    SINGLE_PULSE("1 Pulse", "Single 150ms vibration pulse"),
+    DOUBLE_PULSE("2 Pulses", "Two clear 120ms pulses"),
+    TRIPLE_PULSE("3 Pulses", "Three rhythmic 100ms pulses"),
+    HEARTBEAT("Heartbeat", "Soft organic double pulse"),
+    GHOST_TAP("Ghost Tick", "Subtle micro tactile click")
+}
+
+enum class UtPeakPattern(val displayName: String, val subtitle: String) {
+    CONTINUOUS("Continuous Buzz", "Keeps vibrating continuously until µT drops below threshold"),
+    RAPID_STUTTER("Rapid Stutter", "Urgent repeating alarm pulses"),
+    TRIPLE_HEAVY("3 Heavy Pulses", "Three powerful confirmation vibrations"),
+    DOUBLE_STRONG("Double Heavy Strike", "Two heavy pulses for loud environments")
+}
+
+enum class UtTriggerTier {
+    IDLE,
+    BASELINE_ACTIVE,
+    PEAK_ACTIVE
+}
+

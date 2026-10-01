@@ -154,16 +154,12 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val vibrationWithVisual by viewModel.vibrationWithVisual.collectAsStateWithLifecycle()
     val isVisualDotVisible by viewModel.isVisualDotVisible.collectAsStateWithLifecycle()
 
-    // Immediate Notification Permission Request for Android 13+
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        val permissionLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestPermission()
-        ) { _ -> }
-
-        LaunchedEffect(Unit) {
-            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
+    val isUtTriggerEnabled by viewModel.isUtTriggerEnabled.collectAsStateWithLifecycle()
+    val utBaselineThreshold by viewModel.utBaselineThreshold.collectAsStateWithLifecycle()
+    val utPeakThreshold by viewModel.utPeakThreshold.collectAsStateWithLifecycle()
+    val utBaselinePattern by viewModel.utBaselinePattern.collectAsStateWithLifecycle()
+    val utPeakPattern by viewModel.utPeakPattern.collectAsStateWithLifecycle()
+    val activeUtTier by viewModel.activeUtTier.collectAsStateWithLifecycle()
 
     var showSettingsSheet by remember { mutableStateOf(false) }
     var isSplashVisible by remember { mutableStateOf(true) }
@@ -317,6 +313,12 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             isScreenOffModeActive = isScreenOffModeActive,
                             isVisualModeEnabled = isVisualModeEnabled,
                             vibrationWithVisual = vibrationWithVisual,
+                            isUtTriggerEnabled = isUtTriggerEnabled,
+                            utBaselineThreshold = utBaselineThreshold,
+                            utPeakThreshold = utPeakThreshold,
+                            utBaselinePattern = utBaselinePattern,
+                            utPeakPattern = utPeakPattern,
+                            activeUtTier = activeUtTier,
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
                             onSensitivityChange = { viewModel.setSensitivity(it) },
@@ -327,6 +329,13 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onToggleScreenOffMode = { viewModel.setScreenOffMode(it) },
                             onToggleVisualMode = { viewModel.setVisualModeEnabled(it) },
                             onToggleVibrationWithVisual = { viewModel.setVibrationWithVisual(it) },
+                            onToggleUtTrigger = { viewModel.setUtTriggerEnabled(it) },
+                            onUtBaselineThresholdChange = { viewModel.setUtBaselineThreshold(it) },
+                            onUtPeakThresholdChange = { viewModel.setUtPeakThreshold(it) },
+                            onUtBaselinePatternChange = { viewModel.setUtBaselinePattern(it) },
+                            onUtPeakPatternChange = { viewModel.setUtPeakPattern(it) },
+                            onTestUtBaselinePattern = { viewModel.testUtBaselinePattern() },
+                            onTestUtPeakPattern = { viewModel.testUtPeakPattern() },
                             onNavigateBack = {},
                             onOpenTutorial = { viewModel.setTab(PerformanceTab.TUTORIAL) }
                         )
