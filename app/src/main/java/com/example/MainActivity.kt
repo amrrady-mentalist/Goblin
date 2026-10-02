@@ -155,11 +155,12 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val isVisualDotVisible by viewModel.isVisualDotVisible.collectAsStateWithLifecycle()
 
     val isUtTriggerEnabled by viewModel.isUtTriggerEnabled.collectAsStateWithLifecycle()
-    val utBaselineThreshold by viewModel.utBaselineThreshold.collectAsStateWithLifecycle()
-    val utPeakThreshold by viewModel.utPeakThreshold.collectAsStateWithLifecycle()
     val utBaselinePattern by viewModel.utBaselinePattern.collectAsStateWithLifecycle()
     val utPeakPattern by viewModel.utPeakPattern.collectAsStateWithLifecycle()
     val activeUtTier by viewModel.activeUtTier.collectAsStateWithLifecycle()
+    val isCalibratingObject by viewModel.isCalibratingObject.collectAsStateWithLifecycle()
+    val objectCalibrationPeak by viewModel.objectCalibrationPeak.collectAsStateWithLifecycle()
+    val calibrationMessage by viewModel.calibrationMessage.collectAsStateWithLifecycle()
 
     var showSettingsSheet by remember { mutableStateOf(false) }
     var isSplashVisible by remember { mutableStateOf(true) }
@@ -314,11 +315,12 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             isVisualModeEnabled = isVisualModeEnabled,
                             vibrationWithVisual = vibrationWithVisual,
                             isUtTriggerEnabled = isUtTriggerEnabled,
-                            utBaselineThreshold = utBaselineThreshold,
-                            utPeakThreshold = utPeakThreshold,
                             utBaselinePattern = utBaselinePattern,
                             utPeakPattern = utPeakPattern,
                             activeUtTier = activeUtTier,
+                            isCalibratingObject = isCalibratingObject,
+                            objectCalibrationPeak = objectCalibrationPeak,
+                            calibrationMessage = calibrationMessage,
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
                             onSensitivityChange = { viewModel.setSensitivity(it) },
@@ -330,12 +332,12 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onToggleVisualMode = { viewModel.setVisualModeEnabled(it) },
                             onToggleVibrationWithVisual = { viewModel.setVibrationWithVisual(it) },
                             onToggleUtTrigger = { viewModel.setUtTriggerEnabled(it) },
-                            onUtBaselineThresholdChange = { viewModel.setUtBaselineThreshold(it) },
-                            onUtPeakThresholdChange = { viewModel.setUtPeakThreshold(it) },
                             onUtBaselinePatternChange = { viewModel.setUtBaselinePattern(it) },
                             onUtPeakPatternChange = { viewModel.setUtPeakPattern(it) },
                             onTestUtBaselinePattern = { viewModel.testUtBaselinePattern() },
                             onTestUtPeakPattern = { viewModel.testUtPeakPattern() },
+                            onCalibrateToObject = { viewModel.calibrateToCurrentObject() },
+                            onDismissCalibrationMessage = { viewModel.dismissCalibrationMessage() },
                             onNavigateBack = {},
                             onOpenTutorial = { viewModel.setTab(PerformanceTab.TUTORIAL) }
                         )
