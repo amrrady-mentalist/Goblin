@@ -73,15 +73,12 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     // can't turn the dot off after a newer strike already re-lit it.
     private var visualDotGeneration = 0
 
-    // Dual-Tier µT Threshold Vibration Control
+    // Two-tier haptic feel for a single confirmed detection: "Detected" plays when
+    // the object just cleared threshold, "Strong/Close" plays when it cleared it by
+    // a wide margin. Both now key off the one relative detector below, not a
+    // separate absolute-µT trigger.
     private val _isUtTriggerEnabled = MutableStateFlow(true)
     val isUtTriggerEnabled: StateFlow<Boolean> = _isUtTriggerEnabled.asStateFlow()
-
-    private val _utBaselineThreshold = MutableStateFlow(45)
-    val utBaselineThreshold: StateFlow<Int> = _utBaselineThreshold.asStateFlow()
-
-    private val _utPeakThreshold = MutableStateFlow(90)
-    val utPeakThreshold: StateFlow<Int> = _utPeakThreshold.asStateFlow()
 
     private val _utBaselinePattern = MutableStateFlow(UtBaselinePattern.SINGLE_PULSE)
     val utBaselinePattern: StateFlow<UtBaselinePattern> = _utBaselinePattern.asStateFlow()
@@ -91,6 +88,26 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _activeUtTier = MutableStateFlow(UtTriggerTier.IDLE)
     val activeUtTier: StateFlow<UtTriggerTier> = _activeUtTier.asStateFlow()
+
+    // A detection whose disturbance clears threshold by this multiple counts as
+    // "strong/close" and plays the Peak pattern instead of the Detected pattern.
+    private val STRONG_HIT_MULTIPLE = 2.2f
+    private var activeUtTierGeneration = 0
+
+    // Manual per-object calibration (passthrough from the sensor engine)
+    val isCalibratingObject: StateFlow<Boolean> get() = sensorEngine.isCalibratingObject
+    val objectCalibrationPeak: StateFlow<Float> get() = sensorEngine.objectCalibrationPeak
+
+    private val _calibrationMessage = MutableStateFlow<String?>(null)
+    val calibrationMessage: StateFlow<String?> = _calibrationMessage.asStateFlow()
+
+    fun calibrateToCurrentObject() {
+        sensorEngine.startObjectCalibration()
+    }
+
+    fun dismissCalibrationMessage() {
+        _calibrationMessage.value = null
+    }
 
     private val _isRoomWideMode = MutableStateFlow(true)
     val isRoomWideMode: StateFlow<Boolean> = _isRoomWideMode.asStateFlow()
@@ -163,8 +180,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         _isVisualModeEnabled.value = preferences.isVisualModeEnabled
         _vibrationWithVisual.value = preferences.vibrationWithVisual
         _isUtTriggerEnabled.value = preferences.isUtTriggerEnabled
-        _utBaselineThreshold.value = preferences.utBaselineThreshold
-        _utPeakThreshold.value = preferences.utPeakThreshold
         _utBaselinePattern.value = preferences.utBaselinePattern
         _utPeakPattern.value = preferences.utPeakPattern
         _hapticType.value = try {
@@ -226,7 +241,39 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
                 // 2. Play phone vibration if Visual Mode is disabled OR vibrationWithVisual is active
                 if (!_isVisualModeEnabled.value || _vibrationWithVisual.value) {
-                    hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
+                    if (_isUtTriggerEnabled.value) {
+                        // One detector, two feels: a detection that only just cleared
+                        // threshold plays the "Detected" pattern; one that cleared it by
+                        // a wide margin (object is unusually strong or very close) plays
+                        // the "Strong/Close" pattern instead.
+                        val threshold = sensorEngine.calculateEffectiveThreshold()
+                        val isStrongHit = threshold > 0f && reading.deltaMagnitude >= threshold * STRONG_HIT_MULTIPLE
+
+                        // Flash the live badge to show which pattern just fired
+                        activeUtTierGeneration++
+                        val myTierGeneration = activeUtTierGeneration
+                        _activeUtTier.value = if (isStrongHit) UtTriggerTier.PEAK_ACTIVE else UtTriggerTier.BASELINE_ACTIVE
+                        launch {
+                            delay(1200L)
+                            if (activeUtTierGeneration == myTierGeneration) {
+                                _activeUtTier.value = UtTriggerTier.IDLE
+                            }
+                        }
+
+                        if (isStrongHit) {
+                            hapticEngine.playUtPeakPattern(_utPeakPattern.value)
+                            if (_utPeakPattern.value == UtPeakPattern.CONTINUOUS) {
+                                launch {
+                                    delay(1200L)
+                                    hapticEngine.stopContinuousVibration()
+                                }
+                            }
+                        } else {
+                            hapticEngine.playUtBaselinePattern(_utBaselinePattern.value)
+                        }
+                    } else {
+                        hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
+                    }
                 }
 
                 // Log detection event
@@ -277,43 +324,19 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        // Dual-tier µT threshold vibration processor
+        // Manual object calibration result: apply the suggested sensitivity and
+        // surface a one-line result for the Settings screen to show.
         viewModelScope.launch {
-            sensorEngine.liveMicroTesla.collectLatest { microTesla ->
-                if (!_isUtTriggerEnabled.value || !sensorEngine.isTrickRunning.value || sensorEngine.isSleepingMode.value) {
-                    if (_activeUtTier.value == UtTriggerTier.PEAK_ACTIVE) {
-                        hapticEngine.stopContinuousVibration()
-                    }
-                    _activeUtTier.value = UtTriggerTier.IDLE
-                    return@collectLatest
-                }
-
-                val baseThresh = _utBaselineThreshold.value
-                val peakThresh = _utPeakThreshold.value
-                val currentTier = _activeUtTier.value
-
-                when {
-                    microTesla >= peakThresh -> {
-                        if (currentTier != UtTriggerTier.PEAK_ACTIVE) {
-                            _activeUtTier.value = UtTriggerTier.PEAK_ACTIVE
-                            hapticEngine.playUtPeakPattern(_utPeakPattern.value)
-                        }
-                    }
-                    microTesla >= baseThresh -> {
-                        if (currentTier == UtTriggerTier.PEAK_ACTIVE) {
-                            hapticEngine.stopContinuousVibration()
-                            _activeUtTier.value = UtTriggerTier.BASELINE_ACTIVE
-                        } else if (currentTier == UtTriggerTier.IDLE) {
-                            _activeUtTier.value = UtTriggerTier.BASELINE_ACTIVE
-                            hapticEngine.playUtBaselinePattern(_utBaselinePattern.value)
-                        }
-                    }
-                    microTesla < (baseThresh - 2) -> {
-                        if (currentTier == UtTriggerTier.PEAK_ACTIVE) {
-                            hapticEngine.stopContinuousVibration()
-                        }
-                        _activeUtTier.value = UtTriggerTier.IDLE
-                    }
+            sensorEngine.calibrationEvents.collectLatest { result ->
+                if (result.success) {
+                    setSensitivity(result.suggestedSensitivity)
+                    _calibrationMessage.value =
+                        "Calibrated — peak ${"%.2f".format(result.peakDisturbance)}µT over " +
+                        "${"%.2f".format(result.noiseFloorAtCapture)}µT room noise. " +
+                        "Sensitivity set to ${result.suggestedSensitivity}."
+                } else {
+                    _calibrationMessage.value =
+                        "Didn't see a clear signal — bring the object closer during the next pass and try again."
                 }
             }
         }
@@ -524,18 +547,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
             hapticEngine.stopContinuousVibration()
             _activeUtTier.value = UtTriggerTier.IDLE
         }
-    }
-
-    fun setUtBaselineThreshold(thresh: Int) {
-        val clamped = thresh.coerceIn(20, _utPeakThreshold.value - 5)
-        _utBaselineThreshold.value = clamped
-        preferences.utBaselineThreshold = clamped
-    }
-
-    fun setUtPeakThreshold(thresh: Int) {
-        val clamped = thresh.coerceIn(_utBaselineThreshold.value + 5, 500)
-        _utPeakThreshold.value = clamped
-        preferences.utPeakThreshold = clamped
     }
 
     fun setUtBaselinePattern(pattern: UtBaselinePattern) {
