@@ -19,6 +19,7 @@ class GoblinPreferences(context: Context) {
         private const val KEY_TRICK_RUNNING = "key_trick_running"
         private const val KEY_SENSOR_POWER = "key_sensor_power"
         private const val KEY_SENSITIVITY = "key_sensitivity"
+        private const val KEY_STRONG_HIT_MULTIPLIER = "key_strong_hit_multiplier"
         private const val KEY_ADAPTIVE_SENSITIVITY = "key_adaptive_sensitivity"
         private const val KEY_SMART_ALARM_ENABLED = "key_smart_alarm_enabled"
         private const val KEY_SMART_ALARM_THRESHOLD = "key_smart_alarm_threshold"
@@ -44,6 +45,10 @@ class GoblinPreferences(context: Context) {
     var sensitivity: Float
         get() = prefs.getFloat(KEY_SENSITIVITY, 1.9f)
         set(value) = prefs.edit().putFloat(KEY_SENSITIVITY, value).apply()
+
+    var strongHitMultiplier: Float
+        get() = prefs.getFloat(KEY_STRONG_HIT_MULTIPLIER, 2.2f)
+        set(value) = prefs.edit().putFloat(KEY_STRONG_HIT_MULTIPLIER, value).apply()
 
     var adaptiveSensitivity: Int
         get() = prefs.getInt(KEY_ADAPTIVE_SENSITIVITY, 8)
