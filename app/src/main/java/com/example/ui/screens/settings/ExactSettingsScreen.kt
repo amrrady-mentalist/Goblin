@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,11 +92,12 @@ fun ExactSettingsScreen(
     isVisualModeEnabled: Boolean = false,
     vibrationWithVisual: Boolean = true,
     isUtTriggerEnabled: Boolean = true,
-    utBaselineThreshold: Int = 45,
-    utPeakThreshold: Int = 90,
     utBaselinePattern: UtBaselinePattern = UtBaselinePattern.SINGLE_PULSE,
     utPeakPattern: UtPeakPattern = UtPeakPattern.CONTINUOUS,
     activeUtTier: UtTriggerTier = UtTriggerTier.IDLE,
+    isCalibratingObject: Boolean = false,
+    objectCalibrationPeak: Float = 0f,
+    calibrationMessage: String? = null,
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
@@ -107,12 +109,12 @@ fun ExactSettingsScreen(
     onToggleVisualMode: (Boolean) -> Unit = {},
     onToggleVibrationWithVisual: (Boolean) -> Unit = {},
     onToggleUtTrigger: (Boolean) -> Unit = {},
-    onUtBaselineThresholdChange: (Int) -> Unit = {},
-    onUtPeakThresholdChange: (Int) -> Unit = {},
     onUtBaselinePatternChange: (UtBaselinePattern) -> Unit = {},
     onUtPeakPatternChange: (UtPeakPattern) -> Unit = {},
     onTestUtBaselinePattern: () -> Unit = {},
     onTestUtPeakPattern: () -> Unit = {},
+    onCalibrateToObject: () -> Unit = {},
+    onDismissCalibrationMessage: () -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onOpenTutorial: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -121,6 +123,14 @@ fun ExactSettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(calibrationMessage) {
+        val message = calibrationMessage
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            onDismissCalibrationMessage()
+        }
+    }
 
     var smartAlarmInputText by remember(smartAlarmThreshold) {
         mutableStateOf(smartAlarmThreshold.toInt().toString())
@@ -466,8 +476,8 @@ fun ExactSettingsScreen(
                     }
                     val badgeTextColor = if (activeUtTier == UtTriggerTier.BASELINE_ACTIVE) Color.Black else Color.White
                     val badgeLabel = when (activeUtTier) {
-                        UtTriggerTier.PEAK_ACTIVE -> "🔴 $liveMicroTesla µT (PEAK BUZZ)"
-                        UtTriggerTier.BASELINE_ACTIVE -> "🟡 $liveMicroTesla µT (BASE HIT)"
+                        UtTriggerTier.PEAK_ACTIVE -> "🔴 $liveMicroTesla µT (STRONG/CLOSE)"
+                        UtTriggerTier.BASELINE_ACTIVE -> "🟡 $liveMicroTesla µT (DETECTED)"
                         UtTriggerTier.IDLE -> "$liveMicroTesla µT"
                     }
 
@@ -498,13 +508,13 @@ fun ExactSettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "µT Dual-Tier Threshold Control",
+                            text = "Two-Feel Vibration",
                             color = TextTitleColor,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "Control vibration patterns based on the exact µT value (e.g. 1 pulse at 45 µT, and continuous vibration at 90 µT until it drops below).",
+                            text = "A normal detection plays the Detected pattern; an unusually strong one plays the Strong/Close pattern instead. Calibrate below for tonight's object.",
                             color = TextDescColor,
                             fontSize = 13.sp,
                             lineHeight = 17.sp
@@ -527,7 +537,10 @@ fun ExactSettingsScreen(
                 if (isUtTriggerEnabled) {
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Base Line Threshold Configuration Card
+                    // Calibrate-to-object card: replaces fixed µT thresholds with a
+                    // short capture of whatever object is being used tonight, so the
+                    // same detector works whether it's a faint earbud magnet or a
+                    // strong fridge magnet.
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -537,40 +550,45 @@ fun ExactSettingsScreen(
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Text(
+                            text = "Calibrate To Tonight's Object",
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (isCalibratingObject)
+                                "Hold or pass the object through range now… peak seen: ${"%.2f".format(objectCalibrationPeak)} µT"
+                            else
+                                "Move the object you're using tonight through the real detection range, then tap Calibrate and keep moving it for 3 seconds.",
+                            color = TextDescColor,
+                            fontSize = 13.sp,
+                            lineHeight = 17.sp
+                        )
+
+                        Button(
+                            onClick = onCalibrateToObject,
+                            enabled = !isCalibratingObject,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = YellowAccent,
+                                contentColor = Color.Black,
+                                disabledContainerColor = Color(0xFFE2E8F0)
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .testTag("calibrate_object_button")
                         ) {
                             Text(
-                                text = "Base Line Trigger Threshold",
-                                color = Color(0xFF0F172A),
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "$utBaselineThreshold µT",
-                                color = YellowAccent,
-                                fontSize = 16.sp,
+                                text = if (isCalibratingObject) "Calibrating… hold object nearby" else "Calibrate (3s)",
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
 
-                        Slider(
-                            value = utBaselineThreshold.toFloat(),
-                            onValueChange = { onUtBaselineThresholdChange(it.toInt()) },
-                            valueRange = 25f..120f,
-                            steps = 18,
-                            colors = SliderDefaults.colors(
-                                thumbColor = YellowAccent,
-                                activeTrackColor = YellowAccent,
-                                inactiveTrackColor = Color(0xFFCBD5E1)
-                            ),
-                            modifier = Modifier.testTag("ut_baseline_slider")
-                        )
-
                         Text(
-                            text = "Attached Base Pattern:",
+                            text = "Detected Pattern:",
                             color = Color(0xFF475569),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
@@ -634,7 +652,7 @@ fun ExactSettingsScreen(
                                 .testTag("test_ut_baseline_button")
                         ) {
                             Text(
-                                text = "Test Base Vibration (${utBaselinePattern.displayName})",
+                                text = "Test Detected Vibration (${utBaselinePattern.displayName})",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -643,7 +661,9 @@ fun ExactSettingsScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Peak Threshold Configuration Card
+                    // Strong/Close hit pattern: plays automatically instead of the
+                    // Detected pattern whenever a confirmed hit clears threshold by a
+                    // wide margin (a strong magnet, or the object passing very close).
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -653,43 +673,17 @@ fun ExactSettingsScreen(
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Peak Trigger Threshold",
-                                color = Color(0xFF0F172A),
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "$utPeakThreshold µT",
-                                color = Color(0xFFDC2626),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Slider(
-                            value = utPeakThreshold.toFloat(),
-                            onValueChange = { onUtPeakThresholdChange(it.toInt()) },
-                            valueRange = 50f..250f,
-                            steps = 19,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFFDC2626),
-                                activeTrackColor = Color(0xFFDC2626),
-                                inactiveTrackColor = Color(0xFFCBD5E1)
-                            ),
-                            modifier = Modifier.testTag("ut_peak_slider")
-                        )
-
                         Text(
-                            text = "Attached Peak Pattern:",
-                            color = Color(0xFF475569),
+                            text = "Strong / Close Hit Pattern",
+                            color = Color(0xFF0F172A),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Plays instead of the Detected pattern when a hit comes in unusually strong.",
+                            color = TextDescColor,
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
+                            lineHeight = 17.sp
                         )
 
                         // Pattern Selector Chips for Peak (wrapped 2-per-row — these
@@ -749,7 +743,7 @@ fun ExactSettingsScreen(
                                 .testTag("test_ut_peak_button")
                         ) {
                             Text(
-                                text = "Test Peak Vibration (${utPeakPattern.displayName})",
+                                text = "Test Strong/Close Vibration (${utPeakPattern.displayName})",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
