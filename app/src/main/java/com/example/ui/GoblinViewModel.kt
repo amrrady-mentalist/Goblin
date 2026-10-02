@@ -66,9 +66,12 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     private val _vibrationWithVisual = MutableStateFlow(true)
     val vibrationWithVisual: StateFlow<Boolean> = _vibrationWithVisual.asStateFlow()
 
-    // Live state of the tiny green dot
+    // Live state of the tiny stealth dot
     private val _isVisualDotVisible = MutableStateFlow(false)
     val isVisualDotVisible: StateFlow<Boolean> = _isVisualDotVisible.asStateFlow()
+    // true = strong/close hit (dot renders green), false = weak hit (renders yellow)
+    private val _isVisualDotStrong = MutableStateFlow(false)
+    val isVisualDotStrong: StateFlow<Boolean> = _isVisualDotStrong.asStateFlow()
     // Bumped on every strike so a stale auto-hide timer from an earlier strike
     // can't turn the dot off after a newer strike already re-lit it.
     private var visualDotGeneration = 0
@@ -90,8 +93,17 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     val activeUtTier: StateFlow<UtTriggerTier> = _activeUtTier.asStateFlow()
 
     // A detection whose disturbance clears threshold by this multiple counts as
-    // "strong/close" and plays the Peak pattern instead of the Detected pattern.
-    private val STRONG_HIT_MULTIPLE = 2.2f
+    // "strong/close" and plays the Peak pattern (and green dot) instead of the
+    // Detected pattern (yellow dot).
+    private val _strongHitMultiplier = MutableStateFlow(2.2f)
+    val strongHitMultiplier: StateFlow<Float> = _strongHitMultiplier.asStateFlow()
+
+    fun setStrongHitMultiplier(value: Float) {
+        val clamped = value.coerceIn(1.2f, 4.0f)
+        _strongHitMultiplier.value = clamped
+        preferences.strongHitMultiplier = clamped
+    }
+
     private var activeUtTierGeneration = 0
 
     // Manual per-object calibration (passthrough from the sensor engine)
@@ -180,6 +192,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         _isVisualModeEnabled.value = preferences.isVisualModeEnabled
         _vibrationWithVisual.value = preferences.vibrationWithVisual
         _isUtTriggerEnabled.value = preferences.isUtTriggerEnabled
+        _strongHitMultiplier.value = preferences.strongHitMultiplier
         _utBaselinePattern.value = preferences.utBaselinePattern
         _utPeakPattern.value = preferences.utPeakPattern
         _hapticType.value = try {
@@ -225,10 +238,18 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                 // before firing it, so the pulse can't re-trigger another "strike".
                 sensorEngine.notifyHapticPulse()
 
-                // 1. If in Screen Off Mode OR Visual Mode is enabled, light up green dot
+                // One detector, classified once per strike: a hit that only just
+                // cleared threshold is "weak"; one that cleared it by a wide margin
+                // (a strong magnet, or the object passing very close) is "strong".
+                // Drives both the dot color and which haptic pattern plays.
+                val threshold = sensorEngine.calculateEffectiveThreshold()
+                val isStrongHit = threshold > 0f && reading.deltaMagnitude >= threshold * _strongHitMultiplier.value
+
+                // 1. If in Screen Off Mode OR Visual Mode is enabled, light up the dot
                 if (_isScreenOffModeActive.value || _isVisualModeEnabled.value) {
                     visualDotGeneration++
                     val myGeneration = visualDotGeneration
+                    _isVisualDotStrong.value = isStrongHit
                     _isVisualDotVisible.value = true
                     launch {
                         delay(2200L)
@@ -242,13 +263,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                 // 2. Play phone vibration if Visual Mode is disabled OR vibrationWithVisual is active
                 if (!_isVisualModeEnabled.value || _vibrationWithVisual.value) {
                     if (_isUtTriggerEnabled.value) {
-                        // One detector, two feels: a detection that only just cleared
-                        // threshold plays the "Detected" pattern; one that cleared it by
-                        // a wide margin (object is unusually strong or very close) plays
-                        // the "Strong/Close" pattern instead.
-                        val threshold = sensorEngine.calculateEffectiveThreshold()
-                        val isStrongHit = threshold > 0f && reading.deltaMagnitude >= threshold * STRONG_HIT_MULTIPLE
-
                         // Flash the live badge to show which pattern just fired
                         activeUtTierGeneration++
                         val myTierGeneration = activeUtTierGeneration
