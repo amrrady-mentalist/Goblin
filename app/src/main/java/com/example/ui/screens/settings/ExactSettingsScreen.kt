@@ -98,6 +98,7 @@ fun ExactSettingsScreen(
     isCalibratingObject: Boolean = false,
     objectCalibrationPeak: Float = 0f,
     calibrationMessage: String? = null,
+    strongHitMultiplier: Float = 2.2f,
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
@@ -115,6 +116,7 @@ fun ExactSettingsScreen(
     onTestUtPeakPattern: () -> Unit = {},
     onCalibrateToObject: () -> Unit = {},
     onDismissCalibrationMessage: () -> Unit = {},
+    onStrongHitMultiplierChange: (Float) -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onOpenTutorial: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -536,6 +538,56 @@ fun ExactSettingsScreen(
 
                 if (isUtTriggerEnabled) {
                     Spacer(modifier = Modifier.height(10.dp))
+
+                    // Strong/close cutoff: how far above threshold a hit must clear
+                    // before it counts as "strong" (green dot + Strong/Close pattern)
+                    // instead of "weak" (yellow dot + Detected pattern).
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF8FAFC))
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Strong/Close Cutoff",
+                                color = Color(0xFF0F172A),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "${String.format("%.1f", strongHitMultiplier)}x",
+                                color = YellowAccent,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "Lower = more hits read as \"strong\". Higher = only a very close or very strong object does.",
+                            color = TextDescColor,
+                            fontSize = 13.sp,
+                            lineHeight = 17.sp
+                        )
+                        Slider(
+                            value = strongHitMultiplier,
+                            onValueChange = onStrongHitMultiplierChange,
+                            valueRange = 1.2f..4.0f,
+                            steps = 27,
+                            colors = SliderDefaults.colors(
+                                thumbColor = YellowAccent,
+                                activeTrackColor = YellowAccent,
+                                inactiveTrackColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.testTag("strong_hit_multiplier_slider")
+                        )
+                    }
 
                     // Calibrate-to-object card: replaces fixed µT thresholds with a
                     // short capture of whatever object is being used tonight, so the
