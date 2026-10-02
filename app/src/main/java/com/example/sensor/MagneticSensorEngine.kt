@@ -240,6 +240,71 @@ class MagneticSensorEngine(
     // Strike debounce
     private var lastStrikeTimeMs = 0L
 
+    // Manual object calibration: capture the peak disturbance from a short, deliberate
+    // pass of the actual object being used tonight (earbud, watch charger, fridge magnet,
+    // etc.) and derive a sensitivity that sits safely between that peak and room noise.
+    // This replaces guessing at a fixed sensitivity number per object.
+    private val _isCalibratingObject = MutableStateFlow(false)
+    val isCalibratingObject: StateFlow<Boolean> = _isCalibratingObject.asStateFlow()
+
+    private val _objectCalibrationPeak = MutableStateFlow(0f)
+    val objectCalibrationPeak: StateFlow<Float> = _objectCalibrationPeak.asStateFlow()
+
+    data class ObjectCalibrationResult(
+        val success: Boolean,
+        val peakDisturbance: Float,
+        val noiseFloorAtCapture: Float,
+        val suggestedSensitivity: Float
+    )
+    private val _calibrationEvents = MutableSharedFlow<ObjectCalibrationResult>(
+        replay = 0,
+        extraBufferCapacity = 2,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val calibrationEvents: SharedFlow<ObjectCalibrationResult> = _calibrationEvents.asSharedFlow()
+
+    private var calibCaptureEndTimeMs = 0L
+    private var calibCapturedPeak = 0f
+
+    /**
+     * Starts a short capture window. Caller should be moving the real object through
+     * the intended detection range (right up against where a spectator's hand will be)
+     * for the full [durationMs] while this runs.
+     */
+    fun startObjectCalibration(durationMs: Long = 3000L) {
+        calibCaptureEndTimeMs = System.currentTimeMillis() + durationMs
+        calibCapturedPeak = 0f
+        _objectCalibrationPeak.value = 0f
+        _isCalibratingObject.value = true
+    }
+
+    private fun finishObjectCalibration() {
+        _isCalibratingObject.value = false
+        val peak = calibCapturedPeak
+        // A real object pass should stand well clear of the room's own noise floor;
+        // if it didn't, the object never got close enough during the capture window.
+        val success = peak > noiseFloor * 1.6f
+        val suggested = if (success) {
+            // Sit the threshold roughly halfway between the measured noise and the
+            // object's peak -- comfortably below a real hit, comfortably above noise.
+            val targetThreshold = max(noiseFloor * 1.8f, peak * 0.45f)
+            ((3.8f / targetThreshold).coerceIn(0.5f, 10.0f) * 10f).toInt() / 10f
+        } else {
+            _sensitivity.value
+        }
+        externalScope.launch(Dispatchers.Default) {
+            _calibrationEvents.emit(
+                ObjectCalibrationResult(
+                    success = success,
+                    peakDisturbance = peak,
+                    noiseFloorAtCapture = noiseFloor,
+                    suggestedSensitivity = suggested
+                )
+            )
+        }
+    }
+
+
     // Configuration parameters
     @Volatile var isRoomWideMode: Boolean = true
     @Volatile var fogLevel: Float = 0.35f
@@ -559,6 +624,18 @@ class MagneticSensorEngine(
         // Disturbance: True dynamic ripple caused by an external moving magnetic field
         val disturbance = maxOf(scalarSpan, vectorSpan, vectorDelta * 0.85f)
 
+        // Object calibration capture: record the peak disturbance seen while the
+        // performer deliberately passes tonight's object through range.
+        if (_isCalibratingObject.value) {
+            if (disturbance > calibCapturedPeak) {
+                calibCapturedPeak = disturbance
+                _objectCalibrationPeak.value = calibCapturedPeak
+            }
+            if (nowMs >= calibCaptureEndTimeMs) {
+                finishObjectCalibration()
+            }
+        }
+
         // 6. Dynamic Baseline Lockout & Long-Term Drift Tracking
         val isDisturbanceActive = disturbance > (noiseFloor * 1.5f)
 
@@ -652,6 +729,7 @@ class MagneticSensorEngine(
                 meetsModeCriteria &&
                 isWithinTargetWindow &&
                 !isCalibratingRoom &&
+                !_isCalibratingObject.value &&
                 (nowMs >= hapticPulseBlankUntilMs)
 
         // Status text
