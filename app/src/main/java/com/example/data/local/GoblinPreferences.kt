@@ -29,8 +29,6 @@ class GoblinPreferences(context: Context) {
         private const val KEY_HAPTIC_TYPE = "key_haptic_type"
         private const val KEY_VIBRATION_STRENGTH = "key_vibration_strength"
         private const val KEY_UT_TRIGGER_ENABLED = "key_ut_trigger_enabled"
-        private const val KEY_UT_BASELINE_THRESH = "key_ut_baseline_thresh"
-        private const val KEY_UT_PEAK_THRESH = "key_ut_peak_thresh"
         private const val KEY_UT_BASELINE_PATTERN = "key_ut_baseline_pattern"
         private const val KEY_UT_PEAK_PATTERN = "key_ut_peak_pattern"
     }
@@ -86,14 +84,6 @@ class GoblinPreferences(context: Context) {
     var isUtTriggerEnabled: Boolean
         get() = prefs.getBoolean(KEY_UT_TRIGGER_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_UT_TRIGGER_ENABLED, value).apply()
-
-    var utBaselineThreshold: Int
-        get() = prefs.getInt(KEY_UT_BASELINE_THRESH, 45)
-        set(value) = prefs.edit().putInt(KEY_UT_BASELINE_THRESH, value).apply()
-
-    var utPeakThreshold: Int
-        get() = prefs.getInt(KEY_UT_PEAK_THRESH, 90)
-        set(value) = prefs.edit().putInt(KEY_UT_PEAK_THRESH, value).apply()
 
     var utBaselinePattern: UtBaselinePattern
         get() {
