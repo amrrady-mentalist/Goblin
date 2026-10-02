@@ -36,6 +36,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 fun PitchBlackImmersiveOverlay(
     isVisualModeEnabled: Boolean,
     isVisualDotVisible: Boolean,
+    isVisualDotStrong: Boolean = false,
     onExit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -105,23 +106,27 @@ fun PitchBlackImmersiveOverlay(
                 }
             }
     ) {
-        // Visual Mode: Crisp discrete neon green indicator on top-left corner
+        // Visual Mode: a faint, small indicator in the top-left corner — meant to be
+        // readable by the performer up close, not noticeable to a spectator across the
+        // room. Yellow = a weak/borderline hit, green = a strong/close one.
         if (isVisualDotVisible) {
+            val haloColor = if (isVisualDotStrong) Color(0x1500FF66) else Color(0x15FFD400)
+            val coreColor = if (isVisualDotStrong) Color(0x6600FF66) else Color(0x66FFD400)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 24.dp, top = 24.dp)
-                    .size(16.dp)
+                    .size(8.dp)
                     .clip(CircleShape)
-                    .background(Color(0x4400FF66)), // Discrete neon green halo
+                    .background(haloColor), // Faint halo
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
-                        .size(10.dp)
+                        .size(4.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF00FF66)) // High-visibility vivid neon green core
-                        .testTag("visual_mode_green_dot")
+                        .background(coreColor) // Faint core, just visible up close
+                        .testTag("visual_mode_dot")
                 )
             }
         }
