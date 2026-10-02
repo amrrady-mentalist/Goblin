@@ -54,6 +54,20 @@ class MagneticSensorEngine(
     private val gyroscope: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val proximitySensor: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
 
+    // Game rotation vector: orientation derived from gyroscope+accelerometer only,
+    // deliberately NOT from the magnetometer, so it gives an independent read on how
+    // much the phone itself has turned. Used to "derotate" the raw magnetic reading
+    // into a stable frame, so a phone that's merely being turned in a hand or pocket
+    // doesn't look like the field itself changed.
+    private val gameRotationVector: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+    private val hasRotationReference: Boolean get() = gameRotationVector != null
+    private val rotationMatrix = floatArrayOf(
+        1f, 0f, 0f,
+        0f, 1f, 0f,
+        0f, 0f, 1f
+    )
+    private var hasRotationSample = false
+
     // Power State Flow (On / Off - "Activate sensor")
     private val _isPoweredOn = MutableStateFlow(true)
     val isPoweredOn: StateFlow<Boolean> = _isPoweredOn.asStateFlow()
@@ -363,6 +377,7 @@ class MagneticSensorEngine(
         registerSensorSafely(accelerometer, SensorManager.SENSOR_DELAY_GAME, handler)
         registerSensorSafely(gyroscope, SensorManager.SENSOR_DELAY_GAME, handler)
         registerSensorSafely(proximitySensor, SensorManager.SENSOR_DELAY_NORMAL, handler)
+        registerSensorSafely(gameRotationVector, SensorManager.SENSOR_DELAY_GAME, handler)
     }
 
     private fun registerSensorSafely(sensor: Sensor?, preferredDelay: Int, handler: Handler?) {
@@ -493,6 +508,11 @@ class MagneticSensorEngine(
                 }
             }
 
+            Sensor.TYPE_GAME_ROTATION_VECTOR -> {
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                hasRotationSample = true
+            }
+
             Sensor.TYPE_MAGNETIC_FIELD,
             Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED -> {
                 processMagneticEvent(event)
@@ -520,20 +540,39 @@ class MagneticSensorEngine(
             }
         }
 
+        // Derotate the raw reading using the gyro+accel-only rotation reference,
+        // so turning the phone in a hand or pocket doesn't look like the field
+        // itself changed -- only a genuinely external disturbance survives this.
+        // Falls back to the raw device-frame reading if the sensor is unavailable
+        // or hasn't produced a sample yet.
+        val isRotationCompensated = hasRotationReference && hasRotationSample
+        val worldX: Float
+        val worldY: Float
+        val worldZ: Float
+        if (isRotationCompensated) {
+            worldX = rotationMatrix[0] * rawX + rotationMatrix[1] * rawY + rotationMatrix[2] * rawZ
+            worldY = rotationMatrix[3] * rawX + rotationMatrix[4] * rawY + rotationMatrix[5] * rawZ
+            worldZ = rotationMatrix[6] * rawX + rotationMatrix[7] * rawY + rotationMatrix[8] * rawZ
+        } else {
+            worldX = rawX
+            worldY = rawY
+            worldZ = rawZ
+        }
+
         // 1. Low-Pass Smoothing: Completely eliminates hardware white noise jitter
         if (!isBaselineInitialized) {
-            smoothBx = rawX
-            smoothBy = rawY
-            smoothBz = rawZ
+            smoothBx = worldX
+            smoothBy = worldY
+            smoothBz = worldZ
             smoothScalar = rawScalar
-            baseBx = rawX
-            baseBy = rawY
-            baseBz = rawZ
+            baseBx = worldX
+            baseBy = worldY
+            baseBz = worldZ
             isBaselineInitialized = true
         } else {
-            smoothBx = (1f - SMOOTHING_ALPHA) * smoothBx + SMOOTHING_ALPHA * rawX
-            smoothBy = (1f - SMOOTHING_ALPHA) * smoothBy + SMOOTHING_ALPHA * rawY
-            smoothBz = (1f - SMOOTHING_ALPHA) * smoothBz + SMOOTHING_ALPHA * rawZ
+            smoothBx = (1f - SMOOTHING_ALPHA) * smoothBx + SMOOTHING_ALPHA * worldX
+            smoothBy = (1f - SMOOTHING_ALPHA) * smoothBy + SMOOTHING_ALPHA * worldY
+            smoothBz = (1f - SMOOTHING_ALPHA) * smoothBz + SMOOTHING_ALPHA * worldZ
             smoothScalar = (1f - SMOOTHING_ALPHA) * smoothScalar + SMOOTHING_ALPHA * rawScalar
         }
 
@@ -748,9 +787,20 @@ class MagneticSensorEngine(
                 disturbance >= threshold
             }
             LocatorMode.Y_AXIS_VERTICAL -> {
-                // Strict vertical up/down movement requires Y-axis dominance over lateral X
-                val isYDominant = abs(dy) >= (abs(dx) * 1.10f)
-                disturbance >= threshold && isYDominant
+                if (isRotationCompensated) {
+                    // True vertical (world Z, anchored by gravity -- correct no matter
+                    // how the phone is oriented in a hand or pocket) must dominate the
+                    // horizontal (world X/Y) component of the change.
+                    val horizontalDelta = sqrt(dx * dx + dy * dy)
+                    val isVerticalDominant = abs(dz) >= (horizontalDelta * 1.10f)
+                    disturbance >= threshold && isVerticalDominant
+                } else {
+                    // No independent rotation reference available on this device --
+                    // fall back to the phone's own Y axis, accurate only if it's held
+                    // with a fairly consistent upright orientation.
+                    val isYDominant = abs(dy) >= (abs(dx) * 1.10f)
+                    disturbance >= threshold && isYDominant
+                }
             }
         }
 
