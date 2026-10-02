@@ -153,6 +153,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val isVisualModeEnabled by viewModel.isVisualModeEnabled.collectAsStateWithLifecycle()
     val vibrationWithVisual by viewModel.vibrationWithVisual.collectAsStateWithLifecycle()
     val isVisualDotVisible by viewModel.isVisualDotVisible.collectAsStateWithLifecycle()
+    val isVisualDotStrong by viewModel.isVisualDotStrong.collectAsStateWithLifecycle()
 
     val isUtTriggerEnabled by viewModel.isUtTriggerEnabled.collectAsStateWithLifecycle()
     val utBaselinePattern by viewModel.utBaselinePattern.collectAsStateWithLifecycle()
@@ -161,6 +162,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val isCalibratingObject by viewModel.isCalibratingObject.collectAsStateWithLifecycle()
     val objectCalibrationPeak by viewModel.objectCalibrationPeak.collectAsStateWithLifecycle()
     val calibrationMessage by viewModel.calibrationMessage.collectAsStateWithLifecycle()
+    val strongHitMultiplier by viewModel.strongHitMultiplier.collectAsStateWithLifecycle()
 
     var showSettingsSheet by remember { mutableStateOf(false) }
     var isSplashVisible by remember { mutableStateOf(true) }
@@ -321,6 +323,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             isCalibratingObject = isCalibratingObject,
                             objectCalibrationPeak = objectCalibrationPeak,
                             calibrationMessage = calibrationMessage,
+                            strongHitMultiplier = strongHitMultiplier,
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
                             onSensitivityChange = { viewModel.setSensitivity(it) },
@@ -338,6 +341,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onTestUtPeakPattern = { viewModel.testUtPeakPattern() },
                             onCalibrateToObject = { viewModel.calibrateToCurrentObject() },
                             onDismissCalibrationMessage = { viewModel.dismissCalibrationMessage() },
+                            onStrongHitMultiplierChange = { viewModel.setStrongHitMultiplier(it) },
                             onNavigateBack = {},
                             onOpenTutorial = { viewModel.setTab(PerformanceTab.TUTORIAL) }
                         )
@@ -357,6 +361,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
             PitchBlackImmersiveOverlay(
                 isVisualModeEnabled = isVisualModeEnabled,
                 isVisualDotVisible = isVisualDotVisible,
+                isVisualDotStrong = isVisualDotStrong,
                 onExit = { viewModel.setScreenOffMode(false) }
             )
         }
