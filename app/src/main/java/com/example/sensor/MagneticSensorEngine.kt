@@ -211,9 +211,19 @@ class MagneticSensorEngine(
     private var calibSumY = 0f
     private var calibSumZ = 0f
 
-    // Device physical movement gating (ignoring phone's own rotation/handling)
+    // Device physical movement gating (ignoring phone's own rotation/handling).
+    // A held or pocketed phone is never perfectly still, so this has to tell
+    // ordinary hand tremor/micro-jostle apart from an actual pickup/reposition:
+    // tremor is brief and oscillating, a real reposition is a sustained push in
+    // one direction. Rather than reacting to a single sample crossing a threshold,
+    // it requires the elevated reading to hold continuously for a short stretch.
     private var lastMotionTimeMs = 0L
     private val MOTION_SETTLE_WINDOW_MS = 550L
+    private val REPOSITION_ACCEL_THRESHOLD = 0.9f   // m/s^2 off gravity
+    private val REPOSITION_GYRO_THRESHOLD = 0.45f   // rad/s
+    private val REPOSITION_SUSTAIN_MS = 120L
+    private var accelAboveSinceMs = 0L
+    private var gyroAboveSinceMs = 0L
 
     // Sliding Window Envelope for Peak-to-Peak Disturbance Detection
     private data class WindowSample(
@@ -451,10 +461,19 @@ class MagneticSensorEngine(
                 val ay = event.values[1]
                 val az = event.values[2]
                 val accelMag = sqrt(ax * ax + ay * ay + az * az)
-                // Deviations from Earth gravity (9.81 m/s²) indicate device physical movement
+                // Deviations from Earth gravity (9.81 m/s²) indicate device physical movement.
+                // Only counts once it's held above the threshold continuously for
+                // REPOSITION_SUSTAIN_MS -- a single brief tremor spike decays back down
+                // before that timer is reached and never flags "moving".
                 val dynamicAccel = abs(accelMag - SensorManager.GRAVITY_EARTH)
-                if (dynamicAccel > 0.35f) {
-                    lastMotionTimeMs = System.currentTimeMillis()
+                val nowAccelMs = System.currentTimeMillis()
+                if (dynamicAccel > REPOSITION_ACCEL_THRESHOLD) {
+                    if (accelAboveSinceMs == 0L) accelAboveSinceMs = nowAccelMs
+                    if (nowAccelMs - accelAboveSinceMs >= REPOSITION_SUSTAIN_MS) {
+                        lastMotionTimeMs = nowAccelMs
+                    }
+                } else {
+                    accelAboveSinceMs = 0L
                 }
             }
 
@@ -463,8 +482,14 @@ class MagneticSensorEngine(
                 val gy = event.values[1]
                 val gz = event.values[2]
                 val rotationSpeed = sqrt(gx * gx + gy * gy + gz * gz)
-                if (rotationSpeed > 0.22f) { // Angular rotation > 0.22 rad/s
-                    lastMotionTimeMs = System.currentTimeMillis()
+                val nowGyroMs = System.currentTimeMillis()
+                if (rotationSpeed > REPOSITION_GYRO_THRESHOLD) {
+                    if (gyroAboveSinceMs == 0L) gyroAboveSinceMs = nowGyroMs
+                    if (nowGyroMs - gyroAboveSinceMs >= REPOSITION_SUSTAIN_MS) {
+                        lastMotionTimeMs = nowGyroMs
+                    }
+                } else {
+                    gyroAboveSinceMs = 0L
                 }
             }
 
@@ -512,8 +537,12 @@ class MagneticSensorEngine(
             smoothScalar = (1f - SMOOTHING_ALPHA) * smoothScalar + SMOOTHING_ALPHA * rawScalar
         }
 
-        // 2. Physical phone handling detection
-        val isDevicePhysicallyMoving = (nowMs - lastMotionTimeMs) < MOTION_SETTLE_WINDOW_MS
+        // 2. Physical phone handling detection. Suppressed entirely during manual
+        // object calibration: the whole point of calibration is the phone being
+        // handled while an object is moved near it, and the fixed-duration capture
+        // must always reach its deadline check below or it can never finish.
+        val isDevicePhysicallyMoving = !_isCalibratingObject.value &&
+            (nowMs - lastMotionTimeMs) < MOTION_SETTLE_WINDOW_MS
 
         // 3. Room Attunement / Initial Calibration Phase
         if (isCalibratingRoom) {
