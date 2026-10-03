@@ -324,6 +324,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             objectCalibrationPeak = objectCalibrationPeak,
                             calibrationMessage = calibrationMessage,
                             strongHitMultiplier = strongHitMultiplier,
+                            locatorMode = locatorMode,
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
                             onSensitivityChange = { viewModel.setSensitivity(it) },
@@ -342,6 +343,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onCalibrateToObject = { viewModel.calibrateToCurrentObject() },
                             onDismissCalibrationMessage = { viewModel.dismissCalibrationMessage() },
                             onStrongHitMultiplierChange = { viewModel.setStrongHitMultiplier(it) },
+                            onSelectLocatorMode = { viewModel.setLocatorMode(it) },
                             onNavigateBack = {},
                             onOpenTutorial = { viewModel.setTab(PerformanceTab.TUTORIAL) }
                         )
