@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import com.example.domain.model.LocatorMode
 import com.example.domain.model.UtBaselinePattern
 import com.example.domain.model.UtPeakPattern
 import com.example.domain.model.UtTriggerTier
@@ -99,6 +100,7 @@ fun ExactSettingsScreen(
     objectCalibrationPeak: Float = 0f,
     calibrationMessage: String? = null,
     strongHitMultiplier: Float = 2.2f,
+    locatorMode: LocatorMode = LocatorMode.PROXIMITY_50CM,
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
@@ -117,6 +119,7 @@ fun ExactSettingsScreen(
     onCalibrateToObject: () -> Unit = {},
     onDismissCalibrationMessage: () -> Unit = {},
     onStrongHitMultiplierChange: (Float) -> Unit = {},
+    onSelectLocatorMode: (LocatorMode) -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onOpenTutorial: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -256,6 +259,55 @@ fun ExactSettingsScreen(
 
                 Text(
                     text = "When this option is active the magnetic sensor is turned on\n(It must be active to start the trick)",
+                    color = TextDescColor,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+
+                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+
+                // 2b. Detection Mode -- this was previously only reachable through a
+                // bottom sheet with no button anywhere that actually opened it.
+                Text(
+                    text = "Detection Mode",
+                    color = TextTitleColor,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Normal
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LocatorMode.values().forEach { mode ->
+                        val isSelected = locatorMode == mode
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) YellowAccent.copy(alpha = 0.15f) else Color.White)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) YellowAccent else Color(0xFFCBD5E1),
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { onSelectLocatorMode(mode) }
+                                .padding(12.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = mode.label,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color(0xFF8A6200) else Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = mode.description,
+                                    fontSize = 12.sp,
+                                    color = TextDescColor
+                                )
+                            }
+                        }
+                    }
+                }
+                Text(
+                    text = "Perimeter Proximity and the Earbud trick both react to any movement near the phone, from any direction. Up/Down Y-Axis only reacts to vertical motion and ignores everything else — use it only if the object always moves straight up or down past a stationary phone.",
                     color = TextDescColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
