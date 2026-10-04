@@ -7,12 +7,10 @@ import com.example.data.local.DetectionEventEntity
 import com.example.data.local.GoblinDatabase
 import com.example.data.local.GoblinPreferences
 import com.example.data.local.GoblinRepository
-import com.example.data.local.VenueProfileEntity
 import com.example.domain.model.CreatureState
 import com.example.domain.model.HapticFeedbackType
 import com.example.domain.model.LocatorMode
 import com.example.domain.model.MagneticReading
-import com.example.domain.model.RumbleMode
 import com.example.domain.model.UtBaselinePattern
 import com.example.domain.model.UtPeakPattern
 import com.example.domain.model.UtTriggerTier
@@ -121,29 +119,11 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         _calibrationMessage.value = null
     }
 
-    private val _isRoomWideMode = MutableStateFlow(true)
-    val isRoomWideMode: StateFlow<Boolean> = _isRoomWideMode.asStateFlow()
-
     private val _currentTab = MutableStateFlow(PerformanceTab.SETTINGS)
     val currentTab: StateFlow<PerformanceTab> = _currentTab.asStateFlow()
 
-    private val _fogLevel = MutableStateFlow(0.35f)
-    val fogLevel: StateFlow<Float> = _fogLevel.asStateFlow()
-
-    private val _customThresholdDelta = MutableStateFlow(1.2f)
-    val customThresholdDelta: StateFlow<Float> = _customThresholdDelta.asStateFlow()
-
-    private val _effectiveThreshold = MutableStateFlow(0.28f)
-    val effectiveThreshold: StateFlow<Float> = _effectiveThreshold.asStateFlow()
-
     private val _hapticType = MutableStateFlow(HapticFeedbackType.DOUBLE_STRONG)
     val hapticType: StateFlow<HapticFeedbackType> = _hapticType.asStateFlow()
-
-    private val _rumbleMode = MutableStateFlow(RumbleMode.STOMPS)
-    val rumbleMode: StateFlow<RumbleMode> = _rumbleMode.asStateFlow()
-
-    val targetMinStrengthPercent = MutableStateFlow(0)
-    val targetMaxStrengthPercent = MutableStateFlow(100)
 
     private val _vibrationStrength = MutableStateFlow(VibrationStrength.MEDIUM)
     val vibrationStrength: StateFlow<VibrationStrength> = _vibrationStrength.asStateFlow()
@@ -151,20 +131,11 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     private val _isStealthActive = MutableStateFlow(false)
     val isStealthActive: StateFlow<Boolean> = _isStealthActive.asStateFlow()
 
-    private val _stealthMicroDot = MutableStateFlow(true)
-    val stealthMicroDot: StateFlow<Boolean> = _stealthMicroDot.asStateFlow()
-
     private val _autoPocketStealth = MutableStateFlow(true)
     val autoPocketStealth: StateFlow<Boolean> = _autoPocketStealth.asStateFlow()
 
     private val _volumeKeyTare = MutableStateFlow(true)
     val volumeKeyTare: StateFlow<Boolean> = _volumeKeyTare.asStateFlow()
-
-    private val _activeProfile = MutableStateFlow<VenueProfileEntity?>(null)
-    val activeProfile: StateFlow<VenueProfileEntity?> = _activeProfile.asStateFlow()
-
-    val venueProfiles: StateFlow<List<VenueProfileEntity>>
-    val recentEvents: StateFlow<List<DetectionEventEntity>>
 
     init {
         val database = GoblinDatabase.getInstance(application)
@@ -218,18 +189,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         smartAlarmThreshold = sensorEngine.smartAlarmThreshold
         isSleepingMode = sensorEngine.isSleepingMode
         liveMicroTesla = sensorEngine.liveMicroTesla
-
-        venueProfiles = repository.profiles.stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(5000),
-            emptyList()
-        )
-
-        recentEvents = repository.recentEvents.stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(5000),
-            emptyList()
-        )
 
         // Listen for strike events from sensor engine
         viewModelScope.launch {
@@ -295,7 +254,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     timestamp = reading.timestamp,
                     peakDelta = reading.deltaMagnitude,
                     dominantDirection = reading.dominantDirection,
-                    fogLevel = _fogLevel.value,
+                    fogLevel = 0f,
                     thresholdAtEvent = sensorEngine.calculateEffectiveThreshold(),
                     durationMs = 250L
                 )
@@ -314,13 +273,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                         _isStealthActive.value = false
                     }
                 }
-            }
-        }
-
-        // Update effective threshold on sensor changes
-        viewModelScope.launch {
-            readingState.collectLatest {
-                _effectiveThreshold.value = sensorEngine.calculateEffectiveThreshold()
             }
         }
 
@@ -424,16 +376,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         preferences.isSensorPower = sensorEngine.isPoweredOn.value
     }
 
-    fun setRoomWideMode(enabled: Boolean) {
-        _isRoomWideMode.value = enabled
-        sensorEngine.isRoomWideMode = enabled
-        _effectiveThreshold.value = sensorEngine.calculateEffectiveThreshold()
-    }
-
-    fun toggleRoomWideMode() {
-        setRoomWideMode(!_isRoomWideMode.value)
-    }
-
     fun setLocatorMode(mode: LocatorMode) {
         sensorEngine.setLocatorMode(mode)
         preferences.locatorModeName = mode.name
@@ -444,38 +386,8 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         preferences.locatorModeName = sensorEngine.locatorMode.value.name
     }
 
-    fun setRumbleMode(mode: RumbleMode) {
-        _rumbleMode.value = mode
-        _hapticType.value = mode.hapticType
-        hapticEngine.hapticType = mode.hapticType
-        preferences.hapticTypeName = mode.hapticType.name
-    }
-
-    fun setTargetStrengthWindow(minPercent: Int, maxPercent: Int) {
-        val minP = minPercent.coerceIn(0, 100)
-        val maxP = maxPercent.coerceIn(minP, 100)
-        targetMinStrengthPercent.value = minP
-        targetMaxStrengthPercent.value = maxP
-        sensorEngine.targetMinStrengthPercent = minP
-        sensorEngine.targetMaxStrengthPercent = maxP
-    }
-
     fun setTab(tab: PerformanceTab) {
         _currentTab.value = tab
-    }
-
-    fun setFogLevel(fog: Float) {
-        val clamped = fog.coerceIn(0.02f, 1.0f)
-        _fogLevel.value = clamped
-        sensorEngine.fogLevel = clamped
-        _effectiveThreshold.value = sensorEngine.calculateEffectiveThreshold()
-    }
-
-    fun setCustomThreshold(thresh: Float) {
-        val clamped = thresh.coerceIn(0.8f, 20.0f)
-        _customThresholdDelta.value = clamped
-        sensorEngine.customBaseThreshold = clamped
-        _effectiveThreshold.value = sensorEngine.calculateEffectiveThreshold()
     }
 
     fun tareBaseline() {
@@ -502,51 +414,12 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         _isStealthActive.value = !_isStealthActive.value
     }
 
-    fun setStealthMicroDot(show: Boolean) {
-        _stealthMicroDot.value = show
-    }
-
     fun setAutoPocketStealth(enabled: Boolean) {
         _autoPocketStealth.value = enabled
     }
 
     fun setVolumeKeyTare(enabled: Boolean) {
         _volumeKeyTare.value = enabled
-    }
-
-    fun selectProfile(profile: VenueProfileEntity) {
-        _activeProfile.value = profile
-        setFogLevel(profile.fogLevel)
-        setCustomThreshold(profile.customThresholdDelta)
-        setHapticType(profile.hapticType)
-        setVibrationStrength(profile.vibrationStrength)
-        sensorEngine.debounceMs = profile.debounceMs
-        sensorEngine.tareBaseline()
-    }
-
-    fun saveCurrentAsProfile(name: String, description: String) {
-        viewModelScope.launch {
-            val entity = VenueProfileEntity(
-                name = name.ifBlank { "Custom Venue ${System.currentTimeMillis() % 1000}" },
-                description = description.ifBlank { "Custom configured magnetic sensitivity" },
-                fogLevel = _fogLevel.value,
-                customThresholdDelta = _customThresholdDelta.value,
-                hapticType = _hapticType.value,
-                vibrationStrength = _vibrationStrength.value,
-                debounceMs = sensorEngine.debounceMs,
-                isBuiltIn = false
-            )
-            repository.saveProfile(entity)
-        }
-    }
-
-    fun deleteProfile(profile: VenueProfileEntity) {
-        viewModelScope.launch {
-            repository.deleteProfile(profile)
-            if (_activeProfile.value?.id == profile.id) {
-                _activeProfile.value = null
-            }
-        }
     }
 
     fun testHaptic() {
@@ -593,12 +466,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     fun stopTestingUt() {
         hapticEngine.stopContinuousVibration()
-    }
-
-    fun clearHistory() {
-        viewModelScope.launch {
-            repository.clearEvents()
-        }
     }
 
     fun onVolumeKeyTriggered(): Boolean {
