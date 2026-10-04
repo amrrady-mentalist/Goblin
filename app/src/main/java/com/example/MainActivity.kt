@@ -1,5 +1,7 @@
 package com.example
 
+import android.app.Activity
+import androidx.core.view.WindowCompat
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -52,6 +54,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +63,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -139,6 +144,20 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val liveMicroTesla by viewModel.liveMicroTesla.collectAsStateWithLifecycle()
 
     val isScreenOffModeActive by viewModel.isScreenOffModeActive.collectAsStateWithLifecycle()
+
+    // The Settings/Tutorial screens are light (frosted glass over a pale gradient),
+    // so the status bar icons need to render dark to stay visible -- otherwise
+    // they're white-on-white. The stealth screen hides the status bar entirely, so
+    // this only matters while that's not showing.
+    val statusBarContext = LocalContext.current
+    val statusBarView = LocalView.current
+    SideEffect {
+        val window = (statusBarContext as? Activity)?.window
+        if (window != null) {
+            WindowCompat.getInsetsController(window, statusBarView).isAppearanceLightStatusBars =
+                !isScreenOffModeActive
+        }
+    }
     val isVisualModeEnabled by viewModel.isVisualModeEnabled.collectAsStateWithLifecycle()
     val vibrationWithVisual by viewModel.vibrationWithVisual.collectAsStateWithLifecycle()
     val isVisualDotVisible by viewModel.isVisualDotVisible.collectAsStateWithLifecycle()
