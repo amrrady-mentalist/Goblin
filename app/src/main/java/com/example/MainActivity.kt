@@ -68,7 +68,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.GoblinViewModel
 import com.example.ui.PerformanceTab
 import com.example.ui.screens.settings.ExactSettingsScreen
-import com.example.ui.screens.settings.SettingsSheet
 import com.example.ui.screens.settings.TutorialScreen
 import com.example.ui.screens.splash.SplashScreen
 import com.example.ui.screens.stealth.PitchBlackImmersiveOverlay
@@ -122,23 +121,13 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val reading by viewModel.readingState.collectAsStateWithLifecycle()
     val creatureState by viewModel.creatureState.collectAsStateWithLifecycle()
     val isPoweredOn by viewModel.isPoweredOn.collectAsStateWithLifecycle()
-    val isRoomWideMode by viewModel.isRoomWideMode.collectAsStateWithLifecycle()
     val locatorMode by viewModel.locatorMode.collectAsStateWithLifecycle()
-    val rumbleMode by viewModel.rumbleMode.collectAsStateWithLifecycle()
-    val targetMinStrength by viewModel.targetMinStrengthPercent.collectAsStateWithLifecycle()
-    val targetMaxStrength by viewModel.targetMaxStrengthPercent.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
-    val fogLevel by viewModel.fogLevel.collectAsStateWithLifecycle()
-    val effectiveThreshold by viewModel.effectiveThreshold.collectAsStateWithLifecycle()
     val hapticType by viewModel.hapticType.collectAsStateWithLifecycle()
     val vibrationStrength by viewModel.vibrationStrength.collectAsStateWithLifecycle()
     val isStealthActive by viewModel.isStealthActive.collectAsStateWithLifecycle()
-    val stealthMicroDot by viewModel.stealthMicroDot.collectAsStateWithLifecycle()
     val autoPocketStealth by viewModel.autoPocketStealth.collectAsStateWithLifecycle()
     val volumeKeyTare by viewModel.volumeKeyTare.collectAsStateWithLifecycle()
-    val activeProfile by viewModel.activeProfile.collectAsStateWithLifecycle()
-    val venueProfiles by viewModel.venueProfiles.collectAsStateWithLifecycle()
-    val recentEvents by viewModel.recentEvents.collectAsStateWithLifecycle()
 
     // Settings matching screenshot
     val isTrickRunning by viewModel.isTrickRunning.collectAsStateWithLifecycle()
@@ -164,95 +153,24 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val calibrationMessage by viewModel.calibrationMessage.collectAsStateWithLifecycle()
     val strongHitMultiplier by viewModel.strongHitMultiplier.collectAsStateWithLifecycle()
 
-    var showSettingsSheet by remember { mutableStateOf(false) }
     var isSplashVisible by remember { mutableStateOf(true) }
 
-    Box(modifier = Modifier.fillMaxSize().background(MidnightBg)) {
+    // Frosted-glass shell: a soft translucent nav bar over the same light gradient
+    // the two screens use, replacing the old dark "Obsidian" chrome so the whole
+    // app reads as one consistent, modern look rather than a dark frame around
+    // light content.
+    val glassNavBg = Color(0xFFFFFFFF).copy(alpha = 0.75f)
+    val glassNavSelected = Color(0xFF241B3D)
+    val glassNavUnselected = Color(0xFF8A86A0)
+
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEFE9FF))) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = MidnightBg,
-            topBar = {
-                if (currentTab != PerformanceTab.SETTINGS && currentTab != PerformanceTab.TUTORIAL) {
-                    TopAppBar(
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .background(
-                                        when (creatureState) {
-                                            com.example.domain.model.CreatureState.DORMANT -> Color(0xFF64748B)
-                                            com.example.domain.model.CreatureState.CALIBRATING -> Color(0xFF38BDF8)
-                                            com.example.domain.model.CreatureState.SLUMBERING -> SlumberGreen
-                                            com.example.domain.model.CreatureState.STIRRING -> StirringAmber
-                                            com.example.domain.model.CreatureState.AWAKE -> ElectricCyan
-                                            com.example.domain.model.CreatureState.STRIKING -> StrikeMagenta
-                                        },
-                                        CircleShape
-                                    )
-                            )
-                            Text(
-                                text = "GOBLIN",
-                                color = TextHigh,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp,
-                                letterSpacing = 2.sp
-                            )
-
-                            // Active Profile pill
-                            activeProfile?.let { profile ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MidnightCard)
-                                        .border(1.dp, MidnightCardBorder, RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = profile.name.substringBefore(" (").take(16),
-                                        color = ElectricCyan,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    actions = {
-                        // Master On / Off Power Button
-                        IconButton(
-                            onClick = { viewModel.togglePower() },
-                            modifier = Modifier.testTag("topbar_power_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PowerSettingsNew,
-                                contentDescription = if (isPoweredOn) "Turn Off Detector" else "Turn On Detector",
-                                tint = if (isPoweredOn) SlumberGreen else Color(0xFFEF4444)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { viewModel.setTab(PerformanceTab.SETTINGS) },
-                            modifier = Modifier.testTag("settings_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Settings",
-                                tint = TextHigh
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MidnightBg)
-                )
-            }
-        },
+            containerColor = Color.Transparent,
             bottomBar = {
                 NavigationBar(
-                    containerColor = MidnightSurface,
-                    contentColor = TextMedium,
+                    containerColor = glassNavBg,
+                    contentColor = glassNavUnselected,
                     modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
                 ) {
                     NavigationBarItem(
@@ -266,11 +184,11 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                         },
                         label = { Text("Settings") },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MidnightBg,
+                            selectedIconColor = glassNavSelected,
                             selectedTextColor = Color(0xFFEAB308),
-                            indicatorColor = Color(0xFFEAB308),
-                            unselectedIconColor = TextDim,
-                            unselectedTextColor = TextDim
+                            indicatorColor = Color(0xFFEAB308).copy(alpha = 0.25f),
+                            unselectedIconColor = glassNavUnselected,
+                            unselectedTextColor = glassNavUnselected
                         ),
                         modifier = Modifier.testTag("tab_settings")
                     )
@@ -286,11 +204,11 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                         },
                         label = { Text("Tutorial") },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MidnightBg,
+                            selectedIconColor = glassNavSelected,
                             selectedTextColor = Color(0xFFEAB308),
-                            indicatorColor = Color(0xFFEAB308),
-                            unselectedIconColor = TextDim,
-                            unselectedTextColor = TextDim
+                            indicatorColor = Color(0xFFEAB308).copy(alpha = 0.25f),
+                            unselectedIconColor = glassNavUnselected,
+                            unselectedTextColor = glassNavUnselected
                         ),
                         modifier = Modifier.testTag("tab_tutorial")
                     )
@@ -325,6 +243,7 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             calibrationMessage = calibrationMessage,
                             strongHitMultiplier = strongHitMultiplier,
                             locatorMode = locatorMode,
+                            creatureState = creatureState,
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
                             onSensitivityChange = { viewModel.setSensitivity(it) },
@@ -371,34 +290,6 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
         // Animated Splash Screen matching image background (#0A1A2A)
         if (isSplashVisible) {
             SplashScreen(onSplashFinished = { isSplashVisible = false })
-        }
-
-        // Configuration & Preset Bottom Sheet
-        if (showSettingsSheet) {
-            SettingsSheet(
-                venueProfiles = venueProfiles,
-                activeProfile = activeProfile,
-                currentHapticType = hapticType,
-                currentStrength = vibrationStrength,
-                locatorMode = locatorMode,
-                targetMinStrengthPercent = targetMinStrength,
-                targetMaxStrengthPercent = targetMaxStrength,
-                autoPocketStealth = autoPocketStealth,
-                volumeKeyTare = volumeKeyTare,
-                stealthMicroDot = stealthMicroDot,
-                onSelectProfile = { viewModel.selectProfile(it) },
-                onSaveProfile = { name, desc -> viewModel.saveCurrentAsProfile(name, desc) },
-                onDeleteProfile = { viewModel.deleteProfile(it) },
-                onSelectLocatorMode = { viewModel.setLocatorMode(it) },
-                onSetTargetStrengthWindow = { minP, maxP -> viewModel.setTargetStrengthWindow(minP, maxP) },
-                onSelectHaptic = { viewModel.setHapticType(it) },
-                onSelectStrength = { viewModel.setVibrationStrength(it) },
-                onToggleAutoPocket = { viewModel.setAutoPocketStealth(it) },
-                onToggleVolumeTare = { viewModel.setVolumeKeyTare(it) },
-                onToggleMicroDot = { viewModel.setStealthMicroDot(it) },
-                onTestHaptic = { viewModel.testHaptic() },
-                onDismiss = { showSettingsSheet = false }
-            )
         }
     }
 }
