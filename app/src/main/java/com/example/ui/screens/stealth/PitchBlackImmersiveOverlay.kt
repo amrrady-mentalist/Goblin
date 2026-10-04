@@ -1,6 +1,7 @@
 package com.example.ui.screens.stealth
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,7 @@ fun PitchBlackImmersiveOverlay(
     // Manage Immersive Mode and Keep Screen On
     DisposableEffect(Unit) {
         val window = activity?.window
+        val previousOrientation = activity?.requestedOrientation
         if (window != null) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             val insetsController = WindowCompat.getInsetsController(window, view)
@@ -54,6 +56,11 @@ fun PitchBlackImmersiveOverlay(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             insetsController.hide(WindowInsetsCompat.Type.systemBars())
         }
+        // Lock orientation to whatever it currently is. Android only offers the
+        // "rotate suggestion" button when the screen genuinely could rotate but
+        // isn't -- a dead giveaway that the phone isn't actually locked. Telling
+        // the system the orientation is pinned removes that affordance entirely.
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
 
         onDispose {
             if (window != null) {
@@ -61,6 +68,8 @@ fun PitchBlackImmersiveOverlay(
                 val insetsController = WindowCompat.getInsetsController(window, view)
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
+            activity?.requestedOrientation = previousOrientation
+                ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 
