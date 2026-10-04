@@ -1,6 +1,8 @@
 package com.example.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,10 +14,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -23,12 +27,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import com.example.domain.model.CreatureState
 import com.example.domain.model.LocatorMode
 import com.example.domain.model.UtBaselinePattern
 import com.example.domain.model.UtPeakPattern
 import com.example.domain.model.UtTriggerTier
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -68,15 +74,32 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-// Exact styling colors matching the screenshot
-private val ScreenBg = Color(0xFFFAFBFB)
-private val TextTitleColor = Color(0xFF263238)
-private val TextDescColor = Color(0xFF78909C)
+// Frosted-glass design language: a soft gradient backdrop with a few blurred
+// color blobs behind translucent "frosted" cards. True backdrop-blur (blurring
+// whatever sits behind a card) isn't practical in plain Compose, so the glass
+// feel comes from layering semi-transparent panels over pre-blurred shapes
+// instead -- the same trick most glassmorphism UIs use under the hood.
+private val GradientTop = Color(0xFFEFE9FF)
+private val GradientBottom = Color(0xFFE3F3FF)
+private val ScreenGradient = Brush.verticalGradient(listOf(GradientTop, GradientBottom))
+private val BlobLavender = Color(0xFFD6C6FF)
+private val BlobSky = Color(0xFFBFE4FF)
+private val BlobPeach = Color(0xFFFFE1C7)
+
+private val TextTitleColor = Color(0xFF241B3D)
+private val TextDescColor = Color(0xFF6B6480)
 private val YellowAccent = Color(0xFFEAB308)
 private val YellowTrack = Color(0xFFFACC15)
-private val ButtonDark = Color(0xFF1E293B)
-private val DividerColor = Color(0xFFF1F5F9)
-private val InputBoxBg = Color(0xFFF1F5F9)
+private val ButtonDark = Color(0xFF1E1533)
+private val DividerColor = Color(0xFFFFFFFF).copy(alpha = 0.5f)
+
+// Frosted card surface: translucent white over the blurred backdrop, with a
+// soft light border to catch a glassy edge highlight.
+private val GlassCardBg = Color(0xFFFFFFFF).copy(alpha = 0.55f)
+private val GlassCardBorder = Color(0xFFFFFFFF).copy(alpha = 0.65f)
+private val GlassStroke = Color(0xFFFFFFFF).copy(alpha = 0.45f)
+private val InputBoxBg = Color(0xFFFFFFFF).copy(alpha = 0.65f)
+private val GlassMuted = Color(0xFFFFFFFF).copy(alpha = 0.40f)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +112,7 @@ fun ExactSettingsScreen(
     smartAlarmThreshold: Float,
     isSleepingMode: Boolean,
     liveMicroTesla: Int,
+    creatureState: CreatureState = CreatureState.SLUMBERING,
     isScreenOffModeActive: Boolean = false,
     isVisualModeEnabled: Boolean = false,
     vibrationWithVisual: Boolean = true,
@@ -137,15 +161,64 @@ fun ExactSettingsScreen(
         }
     }
 
-    var smartAlarmInputText by remember(smartAlarmThreshold) {
+    // Deliberately NOT re-keyed to smartAlarmThreshold: this field is the only thing
+    // that ever changes that value, so re-keying it here was resetting the field's
+    // text (and cursor position) out from under the user's own typing on every
+    // keystroke that happened to parse to a valid number -- it never felt "stable"
+    // to type into. It initializes once from the persisted value and then is left
+    // alone, matching standard "uncontrolled text field" practice.
+    // Briefly shows a "Ready" confirmation the moment room calibration finishes
+    // (and only then -- not on every later state change), so there's a clear
+    // signal of when it's safe to start, instead of the banner just vanishing.
+    var wasCalibrating by remember { mutableStateOf(true) }
+    var showReadyBanner by remember { mutableStateOf(false) }
+    LaunchedEffect(creatureState) {
+        if (wasCalibrating && creatureState != CreatureState.CALIBRATING) {
+            showReadyBanner = true
+            kotlinx.coroutines.delay(1800L)
+            showReadyBanner = false
+        }
+        wasCalibrating = (creatureState == CreatureState.CALIBRATING)
+    }
+
+    var smartAlarmInputText by remember {
         mutableStateOf(smartAlarmThreshold.toInt().toString())
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScreenBg)
+            .background(ScreenGradient)
     ) {
+        // Soft blurred color blobs behind the frosted cards -- this is what reads
+        // as "glass" once the translucent card surfaces sit on top of them.
+        Box(
+            modifier = Modifier
+                .size(260.dp)
+                .offset(x = (-80).dp, y = (-60).dp)
+                .blur(90.dp)
+                .clip(CircleShape)
+                .background(BlobLavender.copy(alpha = 0.55f))
+        )
+        Box(
+            modifier = Modifier
+                .size(220.dp)
+                .align(Alignment.TopEnd)
+                .offset(x = 70.dp, y = 40.dp)
+                .blur(90.dp)
+                .clip(CircleShape)
+                .background(BlobSky.copy(alpha = 0.55f))
+        )
+        Box(
+            modifier = Modifier
+                .size(240.dp)
+                .align(Alignment.BottomStart)
+                .offset(x = (-60).dp, y = 60.dp)
+                .blur(100.dp)
+                .clip(CircleShape)
+                .background(BlobPeach.copy(alpha = 0.5f))
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -187,10 +260,10 @@ fun ExactSettingsScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = ScreenBg)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
 
-            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+            HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
             Column(
                 modifier = Modifier
@@ -198,6 +271,52 @@ fun ExactSettingsScreen(
                     .padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+
+                // 0. Room-calibration status: lets the user know when the app is
+                // done reading the surrounding magnetic field and ready to go.
+                if (creatureState == CreatureState.CALIBRATING || showReadyBanner) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(GlassCardBg)
+                            .border(1.dp, GlassCardBorder, RoundedCornerShape(14.dp))
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .testTag("room_calibration_banner"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (creatureState == CreatureState.CALIBRATING) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = YellowAccent
+                            )
+                            Text(
+                                text = "Reading the surrounding magnetic field…",
+                                color = TextTitleColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22C55E)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = "✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(
+                                text = "Ready — room baseline set",
+                                color = TextTitleColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
 
                 // 1. Start Trick Row
                 Row(
@@ -251,7 +370,7 @@ fun ExactSettingsScreen(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = YellowAccent,
                             uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFCBD5E1)
+                            uncheckedTrackColor = GlassMuted
                         ),
                         modifier = Modifier.testTag("activate_sensor_switch")
                     )
@@ -264,7 +383,7 @@ fun ExactSettingsScreen(
                     lineHeight = 18.sp
                 )
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
                 // 2b. Detection Mode -- this was previously only reachable through a
                 // bottom sheet with no button anywhere that actually opened it.
@@ -284,7 +403,7 @@ fun ExactSettingsScreen(
                                 .background(if (isSelected) YellowAccent.copy(alpha = 0.15f) else Color.White)
                                 .border(
                                     1.dp,
-                                    if (isSelected) YellowAccent else Color(0xFFCBD5E1),
+                                    if (isSelected) YellowAccent else GlassMuted,
                                     RoundedCornerShape(10.dp)
                                 )
                                 .clickable { onSelectLocatorMode(mode) }
@@ -313,7 +432,7 @@ fun ExactSettingsScreen(
                     lineHeight = 18.sp
                 )
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
                 // 3. Sensitivity Slider
                 Row(
@@ -336,7 +455,7 @@ fun ExactSettingsScreen(
                     colors = SliderDefaults.colors(
                         thumbColor = YellowAccent,
                         activeTrackColor = YellowTrack,
-                        inactiveTrackColor = Color(0xFFE2E8F0)
+                        inactiveTrackColor = GlassStroke
                     ),
                     modifier = Modifier.testTag("sensitivity_slider")
                 )
@@ -370,7 +489,7 @@ fun ExactSettingsScreen(
                     colors = SliderDefaults.colors(
                         thumbColor = YellowAccent,
                         activeTrackColor = YellowTrack,
-                        inactiveTrackColor = Color(0xFFE2E8F0)
+                        inactiveTrackColor = GlassStroke
                     ),
                     modifier = Modifier.testTag("adaptive_sensitivity_slider")
                 )
@@ -382,7 +501,7 @@ fun ExactSettingsScreen(
                     lineHeight = 18.sp
                 )
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
                 // 5. Smart alarm Section
                 Row(
@@ -404,7 +523,7 @@ fun ExactSettingsScreen(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = YellowAccent,
                             uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFCBD5E1)
+                            uncheckedTrackColor = GlassMuted
                         ),
                         modifier = Modifier.testTag("smart_alarm_switch")
                     )
@@ -449,7 +568,7 @@ fun ExactSettingsScreen(
                         focusedContainerColor = InputBoxBg,
                         unfocusedContainerColor = InputBoxBg,
                         focusedBorderColor = YellowAccent,
-                        unfocusedBorderColor = Color(0xFFCBD5E1),
+                        unfocusedBorderColor = GlassMuted,
                         cursorColor = Color(0xFF0F172A)
                     )
                 )
@@ -461,7 +580,7 @@ fun ExactSettingsScreen(
                     lineHeight = 18.sp
                 )
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
                 // 6. Sleeping Mode Section
                 Row(
@@ -493,7 +612,7 @@ fun ExactSettingsScreen(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = YellowAccent,
                             uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFCBD5E1)
+                            uncheckedTrackColor = GlassMuted
                         ),
                         modifier = Modifier.testTag("sleeping_mode_switch")
                     )
@@ -506,7 +625,7 @@ fun ExactSettingsScreen(
                     lineHeight = 18.sp
                 )
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
                 // 7. MicroTesla Value Section & Dual-Tier Vibration Triggers
                 Row(
@@ -523,31 +642,34 @@ fun ExactSettingsScreen(
                         fontWeight = FontWeight.Normal
                     )
 
-                    val badgeBg = when (activeUtTier) {
-                        UtTriggerTier.PEAK_ACTIVE -> Color(0xFFDC2626)
-                        UtTriggerTier.BASELINE_ACTIVE -> YellowAccent
-                        UtTriggerTier.IDLE -> Color(0xFF0F172A)
-                    }
-                    val badgeTextColor = if (activeUtTier == UtTriggerTier.BASELINE_ACTIVE) Color.Black else Color.White
-                    val badgeLabel = when (activeUtTier) {
-                        UtTriggerTier.PEAK_ACTIVE -> "🔴 $liveMicroTesla µT (STRONG/CLOSE)"
-                        UtTriggerTier.BASELINE_ACTIVE -> "🟡 $liveMicroTesla µT (DETECTED)"
-                        UtTriggerTier.IDLE -> "$liveMicroTesla µT"
+                    // Dot color tracks the same SLUMBERING/STIRRING/AWAKE/STRIKING
+                    // tiers the engine already derives the "Detected"/"Strong-Close"
+                    // haptic split from, rather than a separate made-up scale: green
+                    // while things are quiet, yellow for a faint reading, red once
+                    // it's strong enough to count as a real detection.
+                    val readingDotColor = when (creatureState) {
+                        CreatureState.CALIBRATING, CreatureState.DORMANT -> Color(0xFF94A3B8)
+                        CreatureState.SLUMBERING -> Color(0xFF22C55E)
+                        CreatureState.STIRRING -> Color(0xFFEAB308)
+                        CreatureState.AWAKE, CreatureState.STRIKING -> Color(0xFFDC2626)
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(badgeBg)
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                            .testTag("microtesla_value_badge"),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.testTag("microtesla_value_badge")
                     ) {
                         Text(
-                            text = badgeLabel,
-                            color = badgeTextColor,
-                            fontSize = 15.sp,
+                            text = "$liveMicroTesla µT",
+                            color = TextTitleColor,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(11.dp)
+                                .clip(CircleShape)
+                                .background(readingDotColor)
                         )
                     }
                 }
@@ -582,7 +704,7 @@ fun ExactSettingsScreen(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = YellowAccent,
                             uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFCBD5E1)
+                            uncheckedTrackColor = GlassMuted
                         ),
                         modifier = Modifier.testTag("ut_trigger_switch")
                     )
@@ -598,8 +720,8 @@ fun ExactSettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF8FAFC))
-                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .background(GlassCardBg)
+                            .border(1.dp, GlassStroke, RoundedCornerShape(12.dp))
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -635,7 +757,7 @@ fun ExactSettingsScreen(
                             colors = SliderDefaults.colors(
                                 thumbColor = YellowAccent,
                                 activeTrackColor = YellowAccent,
-                                inactiveTrackColor = Color(0xFFCBD5E1)
+                                inactiveTrackColor = GlassMuted
                             ),
                             modifier = Modifier.testTag("strong_hit_multiplier_slider")
                         )
@@ -649,8 +771,8 @@ fun ExactSettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF8FAFC))
-                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .background(GlassCardBg)
+                            .border(1.dp, GlassStroke, RoundedCornerShape(12.dp))
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -676,7 +798,7 @@ fun ExactSettingsScreen(
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = YellowAccent,
                                 contentColor = Color.Black,
-                                disabledContainerColor = Color(0xFFE2E8F0)
+                                disabledContainerColor = GlassStroke
                             ),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
@@ -716,7 +838,7 @@ fun ExactSettingsScreen(
                                                 .background(if (isSelected) YellowAccent else Color.White)
                                                 .border(
                                                     1.dp,
-                                                    if (isSelected) YellowAccent else Color(0xFFCBD5E1),
+                                                    if (isSelected) YellowAccent else GlassMuted,
                                                     RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable { onUtBaselinePatternChange(pattern) }
@@ -772,8 +894,8 @@ fun ExactSettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF8FAFC))
-                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .background(GlassCardBg)
+                            .border(1.dp, GlassStroke, RoundedCornerShape(12.dp))
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -808,7 +930,7 @@ fun ExactSettingsScreen(
                                                 .background(if (isSelected) Color(0xFFDC2626) else Color.White)
                                                 .border(
                                                     1.dp,
-                                                    if (isSelected) Color(0xFFDC2626) else Color(0xFFCBD5E1),
+                                                    if (isSelected) Color(0xFFDC2626) else GlassMuted,
                                                     RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable { onUtPeakPatternChange(pattern) }
@@ -855,7 +977,7 @@ fun ExactSettingsScreen(
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
                 // 8. Screen Off Mode Section
                 Row(
@@ -894,7 +1016,7 @@ fun ExactSettingsScreen(
                     lineHeight = 18.sp
                 )
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
                 // 9. Visual Mode Section
                 Row(
@@ -916,7 +1038,7 @@ fun ExactSettingsScreen(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = YellowAccent,
                             uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color(0xFFCBD5E1)
+                            uncheckedTrackColor = GlassMuted
                         ),
                         modifier = Modifier.testTag("visual_mode_switch")
                     )
@@ -951,7 +1073,7 @@ fun ExactSettingsScreen(
                                 checkedThumbColor = Color.White,
                                 checkedTrackColor = YellowAccent,
                                 uncheckedThumbColor = Color.White,
-                                uncheckedTrackColor = Color(0xFFCBD5E1)
+                                uncheckedTrackColor = GlassMuted
                             ),
                             modifier = Modifier.testTag("vibration_with_visual_switch")
                         )
@@ -965,7 +1087,7 @@ fun ExactSettingsScreen(
                     )
                 }
 
-                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
 
                 Spacer(modifier = Modifier.height(24.dp))
             }
