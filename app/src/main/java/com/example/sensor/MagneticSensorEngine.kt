@@ -187,8 +187,6 @@ class MagneticSensorEngine(
     }
 
     // Target Magnetic Field Strength Window (0% to 100%)
-    @Volatile var targetMinStrengthPercent: Int = 0
-    @Volatile var targetMaxStrengthPercent: Int = 100
 
     // Anti-Ghosting Haptic Motor Blanking
     private var hapticPulseBlankUntilMs = 0L
@@ -330,9 +328,6 @@ class MagneticSensorEngine(
 
 
     // Configuration parameters
-    @Volatile var isRoomWideMode: Boolean = true
-    @Volatile var fogLevel: Float = 0.35f
-    @Volatile var customBaseThreshold: Float = 1.2f
     @Volatile var debounceMs: Long = 400L
 
     init {
@@ -779,7 +774,6 @@ class MagneticSensorEngine(
         val scentStrengthPercent = ((disturbance / max(0.5f, threshold * 1.3f)) * 100f).toInt().coerceIn(0, 100)
 
         // In-Window check for targeted magnetic strength (user configured)
-        val isWithinTargetWindow = scentStrengthPercent in targetMinStrengthPercent..targetMaxStrengthPercent
 
         // Mode-Specific Strike Criteria
         val meetsModeCriteria = when (_locatorMode.value) {
@@ -806,7 +800,6 @@ class MagneticSensorEngine(
 
         val isStrike = _isTrickRunning.value &&
                 meetsModeCriteria &&
-                isWithinTargetWindow &&
                 !isCalibratingRoom &&
                 !_isCalibratingObject.value &&
                 (nowMs >= hapticPulseBlankUntilMs)
