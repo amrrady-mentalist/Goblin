@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -44,6 +45,13 @@ fun PitchBlackImmersiveOverlay(
     val context = LocalContext.current
     val view = LocalView.current
     val activity = context as? Activity
+
+    // The old threshold was 140 *raw pixels*, not density-adjusted -- on a
+    // high-DPI phone that's as little as ~35-45dp, a genuinely tiny physical
+    // swipe. Defining it in dp and converting properly makes it a deliberate,
+    // decent-distance gesture on every screen regardless of density.
+    val density = LocalDensity.current
+    val exitSwipeThresholdPx = with(density) { 220.dp.toPx() }
 
     // Manage Immersive Mode and Keep Screen On
     DisposableEffect(Unit) {
@@ -100,8 +108,8 @@ fun PitchBlackImmersiveOverlay(
                                 val dy1 = p1.position.y - startY1
                                 val dy2 = p2.position.y - startY2
 
-                                // 2 fingers swiped down by at least 140 pixels
-                                if (dy1 > 140f && dy2 > 140f) {
+                                // 2 fingers swiped down by a decent, deliberate distance
+                                if (dy1 > exitSwipeThresholdPx && dy2 > exitSwipeThresholdPx) {
                                     p1.consume()
                                     p2.consume()
                                     onExit()
