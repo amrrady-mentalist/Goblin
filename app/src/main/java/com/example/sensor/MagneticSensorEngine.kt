@@ -259,6 +259,15 @@ class MagneticSensorEngine(
     private var undisturbedDurationMs = 0L
     private var lastStaticCheckTimeMs = 0L
 
+    // Saturation/stuck-reading escape hatch: if the field reads as "disturbed"
+    // continuously for far longer than any real object pass ever takes, the
+    // freeze below is almost certainly stuck on something that isn't an ongoing
+    // detection (sensor saturation, residual magnetization, interference) rather
+    // than genuinely still happening. Without this, the only way out was moving
+    // the phone enough to force a re-read.
+    private var disturbanceActiveSinceMs = 0L
+    private val STUCK_DISTURBANCE_TIMEOUT_MS = 4000L
+
     // Strike debounce
     private var lastStrikeTimeMs = 0L
 
@@ -706,7 +715,20 @@ class MagneticSensorEngine(
             // FREEZE baseline adaptation completely so a moving magnet is NEVER swallowed!
             undisturbedDurationMs = 0L
             lastStaticCheckTimeMs = nowMs
+
+            if (disturbanceActiveSinceMs == 0L) disturbanceActiveSinceMs = nowMs
+            val stuckDurationMs = nowMs - disturbanceActiveSinceMs
+            if (stuckDurationMs > STUCK_DISTURBANCE_TIMEOUT_MS) {
+                // Stuck well past any real pass's duration -- slowly let the baseline
+                // catch back up to the current field so it can resolve on its own,
+                // without needing the phone physically moved to "shake it loose."
+                val unstickAlpha = 0.01f
+                baseBx = (1f - unstickAlpha) * baseBx + unstickAlpha * smoothBx
+                baseBy = (1f - unstickAlpha) * baseBy + unstickAlpha * smoothBy
+                baseBz = (1f - unstickAlpha) * baseBz + unstickAlpha * smoothBz
+            }
         } else {
+            disturbanceActiveSinceMs = 0L
             // Quiet ambient period: gently eliminate slow temperature drift (tau ~ 8s)
             val driftAlpha = 0.006f
             baseBx = (1f - driftAlpha) * baseBx + driftAlpha * smoothBx
