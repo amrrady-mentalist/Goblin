@@ -693,8 +693,25 @@ class MagneticSensorEngine(
         val scalarSpan = if (windowSamples.size >= 3) max(0f, maxScalar - minScalar) else 0f
         val vectorSpan = if (windowSamples.size >= 3) max(0f, maxVecDelta - minVecDelta) else 0f
 
-        // Disturbance: True dynamic ripple caused by an external moving magnetic field
-        val disturbance = maxOf(scalarSpan, vectorSpan, vectorDelta * 0.85f)
+        // Disturbance: True dynamic ripple caused by an external moving magnetic field.
+        //
+        // For the two direction-agnostic modes, this now uses ONLY the scalar
+        // (total field strength) span. Rotating the phone physically cannot change
+        // that number, no matter the orientation -- it needs no gyroscope reference
+        // and has no drift or "sensor unavailable" fallback to worry about, unlike
+        // the per-axis vector terms, which still depend on the rotation-compensation
+        // pass above. Previously this took the max of all three signals, so a
+        // rotation artifact leaking into the (imperfectly corrected) vector terms
+        // alone was enough to register as a false disturbance even while the clean
+        // scalar signal stayed completely flat.
+        //
+        // Y_AXIS_VERTICAL still needs the vector terms regardless, since its whole
+        // job is telling vertical motion apart from horizontal -- that requires
+        // per-axis data by definition -- so it keeps the combined signal.
+        val disturbance = when (_locatorMode.value) {
+            LocatorMode.PROXIMITY_50CM, LocatorMode.EARBUD_DETECTOR -> scalarSpan
+            LocatorMode.Y_AXIS_VERTICAL -> maxOf(scalarSpan, vectorSpan, vectorDelta * 0.85f)
+        }
 
         // Object calibration capture: record the peak disturbance seen while the
         // performer deliberately passes tonight's object through range.
