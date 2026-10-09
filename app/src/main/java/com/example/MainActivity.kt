@@ -114,10 +114,10 @@ class MainActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        viewModel.sensorEngine.stopListening()
-    }
+    // Intentionally no onDestroy() that stops the sensor engine: the engine is
+    // owned by the ViewModel, which survives activity recreation (theme/language
+    // change, split-screen resize...). GoblinViewModel.onCleared() stops it when
+    // the ViewModel is really finished.
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
