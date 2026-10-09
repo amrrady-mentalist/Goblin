@@ -357,6 +357,9 @@ class MagneticSensorEngine(
             startRoomCalibration()
         } else {
             stopListening()
+            // Don't leave a half-finished object calibration "running" with no
+            // sensor feeding it.
+            _isCalibratingObject.value = false
             _creatureState.value = CreatureState.DORMANT
             _readingState.value = _readingState.value.copy(
                 deltaMagnitude = 0f,
