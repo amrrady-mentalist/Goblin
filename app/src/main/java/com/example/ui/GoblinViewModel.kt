@@ -103,6 +103,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private var activeUtTierGeneration = 0
+    private var continuousStopGeneration = 0
 
     // Manual per-object calibration (passthrough from the sensor engine)
     val isCalibratingObject: StateFlow<Boolean> get() = sensorEngine.isCalibratingObject
@@ -176,6 +177,10 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         } catch (e: Exception) {
             VibrationStrength.MEDIUM
         }
+        // The flows above only drive the UI -- the haptic engine itself has to be
+        // handed the saved choices too, or it plays its defaults after every restart.
+        hapticEngine.hapticType = _hapticType.value
+        hapticEngine.strength = _vibrationStrength.value
 
         readingState = sensorEngine.readingState
         creatureState = sensorEngine.creatureState
@@ -221,6 +226,25 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
                 // 2. Play phone vibration if Visual Mode is disabled OR vibrationWithVisual is active
                 if (!_isVisualModeEnabled.value || _vibrationWithVisual.value) {
+                    // Any earlier continuous buzz must be fully cancelled (and its flag
+                    // reset) before a new pattern plays, otherwise a leftover "running"
+                    // flag can make the next strong hit silently do nothing.
+                    // (A new strong hit while one is still running just extends it.)
+                    if (!(isStrongHit && _utPeakPattern.value == UtPeakPattern.CONTINUOUS &&
+                            _isUtTriggerEnabled.value)) {
+                        hapticEngine.stopContinuousVibration()
+                    }
+                    // Keep the magnetometer ignoring the motor for as long as this
+                    // pattern actually vibrates, not just the default 450 ms.
+                    val isLongContinuous = isStrongHit && _isUtTriggerEnabled.value &&
+                        _utPeakPattern.value == UtPeakPattern.CONTINUOUS
+                    sensorEngine.notifyHapticPulse(
+                        when {
+                            isLongContinuous -> 1500L
+                            isStrongHit -> 700L
+                            else -> 450L
+                        }
+                    )
                     if (_isUtTriggerEnabled.value) {
                         // Flash the live badge to show which pattern just fired
                         activeUtTierGeneration++
@@ -236,9 +260,16 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                         if (isStrongHit) {
                             hapticEngine.playUtPeakPattern(_utPeakPattern.value)
                             if (_utPeakPattern.value == UtPeakPattern.CONTINUOUS) {
-                                launch {
+                                // Launched on viewModelScope, not inside this collectLatest
+                                // block: a newer strike cancels that block, which used to
+                                // cancel this stop timer and leave the buzz "running".
+                                continuousStopGeneration++
+                                val myStopGeneration = continuousStopGeneration
+                                viewModelScope.launch {
                                     delay(1200L)
-                                    hapticEngine.stopContinuousVibration()
+                                    if (continuousStopGeneration == myStopGeneration) {
+                                        hapticEngine.stopContinuousVibration()
+                                    }
                                 }
                             }
                         } else {
@@ -279,6 +310,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         // Smart Alarm saturation warning listener
         viewModelScope.launch {
             sensorEngine.smartAlarmEvents.collectLatest {
+                sensorEngine.notifyHapticPulse(700L)
                 hapticEngine.playSaturationAlarm()
             }
         }
@@ -286,6 +318,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         // Sleeping mode wake-up confirmation listener
         viewModelScope.launch {
             sensorEngine.sleepWakeEvents.collectLatest {
+                sensorEngine.notifyHapticPulse(700L)
                 hapticEngine.playWakeConfirmation()
             }
         }
@@ -471,6 +504,9 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     fun onVolumeKeyTriggered(): Boolean {
         if (_volumeKeyTare.value) {
             tareBaseline()
+            // The confirmation tick comes right after the baseline reset, so the
+            // magnetometer must ignore the motor or it reads as a disturbance.
+            sensorEngine.notifyHapticPulse(450L)
             hapticEngine.testFeedback(HapticFeedbackType.GHOST_TAP)
             return true
         }
