@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.util.Log
 import com.example.domain.model.CreatureState
 import com.example.domain.model.GesturePhase
@@ -92,7 +93,7 @@ class MagneticSensorEngine(
     val sensitivity: StateFlow<Float> = _sensitivity.asStateFlow()
 
     fun setSensitivity(value: Float) {
-        _sensitivity.value = (value * 10f).toInt() / 10f
+        _sensitivity.value = ((value * 10f).toInt() / 10f).coerceIn(0.5f, 10f)
     }
 
     // 3. Adaptative Sensitivity (Moving / walk sensitivity, default 8, step 1, range 1 to 20)
@@ -415,13 +416,29 @@ class MagneticSensorEngine(
      * Calibrates baseline to ambient room field while resting.
      */
     fun startRoomCalibration() {
-        isCalibratingRoom = true
-        calibrationStartTimeMs = System.currentTimeMillis()
-        calibSampleCount = 0
-        calibSumX = 0f
-        calibSumY = 0f
-        calibSumZ = 0f
-        _creatureState.value = CreatureState.CALIBRATING
+        runOnSensorThread {
+            isCalibratingRoom = true
+            calibrationStartTimeMs = System.currentTimeMillis()
+            calibSampleCount = 0
+            calibSumX = 0f
+            calibSumY = 0f
+            calibSumZ = 0f
+            _creatureState.value = CreatureState.CALIBRATING
+        }
+    }
+
+    /**
+     * All mutable detection state (windowSamples, baselines, calibration
+     * accumulators) is confined to the sensor thread. Callers on other threads
+     * post their changes here instead of touching that state directly.
+     */
+    private fun runOnSensorThread(block: () -> Unit) {
+        val handler = sensorHandler
+        if (handler == null || Looper.myLooper() == handler.looper) {
+            block()
+        } else {
+            handler.post(block)
+        }
     }
 
     /**
@@ -429,18 +446,20 @@ class MagneticSensorEngine(
      */
     fun tareBaseline() {
         if (!_isPoweredOn.value) return
-        val current = _readingState.value
-        baseBx = current.x
-        baseBy = current.y
-        baseBz = current.z
-        smoothBx = current.x
-        smoothBy = current.y
-        smoothBz = current.z
-        smoothScalar = sqrt(baseBx * baseBx + baseBy * baseBy + baseBz * baseBz)
-        windowSamples.clear()
-        isBaselineInitialized = true
-        isCalibratingRoom = false
-        _creatureState.value = CreatureState.SLUMBERING
+        runOnSensorThread {
+            val current = _readingState.value
+            baseBx = current.x
+            baseBy = current.y
+            baseBz = current.z
+            smoothBx = current.x
+            smoothBy = current.y
+            smoothBz = current.z
+            smoothScalar = sqrt(baseBx * baseBx + baseBy * baseBy + baseBz * baseBz)
+            windowSamples.clear()
+            isBaselineInitialized = true
+            isCalibratingRoom = false
+            _creatureState.value = CreatureState.SLUMBERING
+        }
     }
 
     val isPhonePhysicallyMoving: Boolean
