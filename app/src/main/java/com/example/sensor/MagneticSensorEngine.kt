@@ -190,7 +190,7 @@ class MagneticSensorEngine(
     // Target Magnetic Field Strength Window (0% to 100%)
 
     // Anti-Ghosting Haptic Motor Blanking
-    private var hapticPulseBlankUntilMs = 0L
+    @Volatile private var hapticPulseBlankUntilMs = 0L
 
     fun notifyHapticPulse(durationMs: Long = 450L) {
         hapticPulseBlankUntilMs = System.currentTimeMillis() + durationMs
@@ -304,10 +304,14 @@ class MagneticSensorEngine(
      * for the full [durationMs] while this runs.
      */
     fun startObjectCalibration(durationMs: Long = 3000L) {
-        calibCaptureEndTimeMs = System.currentTimeMillis() + durationMs
-        calibCapturedPeak = 0f
-        _objectCalibrationPeak.value = 0f
-        _isCalibratingObject.value = true
+        // Reset the capture state on the sensor thread so it can't be half-reset
+        // in the middle of a reading being processed.
+        runOnSensorThread {
+            calibCaptureEndTimeMs = System.currentTimeMillis() + durationMs
+            calibCapturedPeak = 0f
+            _objectCalibrationPeak.value = 0f
+            _isCalibratingObject.value = true
+        }
     }
 
     private fun finishObjectCalibration() {
