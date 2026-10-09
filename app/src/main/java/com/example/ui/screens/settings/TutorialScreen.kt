@@ -170,8 +170,8 @@ fun TutorialScreen(
 
                 TutorialStepItem(
                     icon = Icons.Default.Speed,
-                    title = "3. Sensitivity & Adaptive Sensitivity",
-                    body = "Sensitivity governs detection while the phone is resting still; Adaptive Sensitivity governs it while the phone is being carried or handled. Both get set automatically by Calibrate To Object below \u2014 you shouldn't usually need to hand-tune them unless you want to nudge the result afterward."
+                    title = "3. Sensitivity",
+                    body = "Sensitivity sets how large a magnetic ripple has to be to count as a detection while the phone is resting. Calibrate To Object below sets it automatically \u2014 you shouldn't usually need to hand-tune it unless you want to nudge the result afterward. While the phone itself is being moved or handled, detection pauses on purpose so its own motion can't cause false buzzes."
                 )
 
                 TutorialStepItem(
@@ -195,7 +195,7 @@ fun TutorialScreen(
                 TutorialStepItem(
                     icon = Icons.Default.Bedtime,
                     title = "7. Sleeping Mode",
-                    body = "Turn off \"Activate sensor\" first, then switch on Sleeping Mode and pocket the phone. To covertly arm the trick mid-routine, bring your magnetic prop close to your pocket \u2014 the phone wakes itself and confirms with a distinct buzz."
+                    body = "Sleeping Mode can only be changed while \"Activate sensor\" is off. Turn the sensor off, switch Sleeping Mode on, then turn \"Activate sensor\" back on and pocket the phone \u2014 it stays quiet. To covertly arm the trick mid-routine, bring your magnetic prop close to your pocket; the phone wakes itself and confirms with a distinct buzz. If the sensor is left off, the wake-up can never happen."
                 )
 
                 TutorialStepItem(
