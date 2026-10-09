@@ -107,6 +107,11 @@ class MainActivity : ComponentActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // Intercept volume keys for pocket hands-free tare
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            // A held key auto-repeats; only the first press should tare, otherwise
+            // holding it spams baseline resets and confirmation ticks.
+            if (event != null && event.repeatCount > 0) {
+                return viewModel.volumeKeyTare.value
+            }
             if (viewModel.onVolumeKeyTriggered()) {
                 return true
             }
