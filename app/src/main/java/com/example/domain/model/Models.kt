@@ -3,22 +3,40 @@ package com.example.domain.model
 import kotlin.math.abs
 import kotlin.math.sqrt
 
+/**
+ * The three presets, in the order they are shown on screen.
+ *
+ * STRONG_MAGNET    -- a movement in the field triggers the cue, and a second
+ *                     "still near" check then tells you whether the object stays close.
+ * WEAK_MAGNET      -- any movement in the field triggers the cue. Nothing else.
+ * WEAK_MAGNET_UP_DOWN -- same, but only when the change is mainly vertical.
+ */
 enum class LocatorMode(val label: String, val shortName: String, val description: String) {
-    PROXIMITY_50CM(
-        "Perimeter Proximity (0-50 cm)",
-        "0-50 cm",
-        "Detects any magnetic object moving within 0 to 50 cm around the phone."
+    STRONG_MAGNET(
+        "Strong Magnet",
+        "Strong",
+        "Watch charger, fridge magnet or similar. Any movement in the field triggers the cue, then a second check tells you whether the object is still close."
     ),
-    EARBUD_DETECTOR(
-        "Earbud / AirPods Trick (0-40 cm)",
-        "Earbuds",
-        "Calibrated specifically for wireless earbud neodymium magnets (AirPods, Galaxy Buds)."
+    WEAK_MAGNET(
+        "Weak Magnet",
+        "Weak",
+        "Earbud or similar. Any movement in the magnetic field triggers the cue, from any direction."
     ),
-    Y_AXIS_VERTICAL(
-        "Strict Up/Down Y-Axis",
-        "Up/Down",
-        "Strictly restricted to vertical lifting motions along the Y-axis."
-    )
+    WEAK_MAGNET_UP_DOWN(
+        "Weak Magnet – Up/Down",
+        "Weak Up/Down",
+        "Earbud or similar. Only a change caused by the hand moving up or down triggers the cue; sideways movement is ignored."
+    );
+
+    companion object {
+        /** Reads a stored name, including the three names used before the presets existed. */
+        fun fromStored(name: String?): LocatorMode = when (name) {
+            "STRONG_MAGNET" -> STRONG_MAGNET
+            "WEAK_MAGNET", "PROXIMITY_50CM", "EARBUD_DETECTOR" -> WEAK_MAGNET
+            "WEAK_MAGNET_UP_DOWN", "Y_AXIS_VERTICAL" -> WEAK_MAGNET_UP_DOWN
+            else -> WEAK_MAGNET
+        }
+    }
 }
 
 enum class RumbleMode(val label: String, val subtitle: String, val hapticType: HapticFeedbackType) {
@@ -90,6 +108,11 @@ data class MagneticReading(
     val scentStrengthPercent: Int = 0,
     val scentStatusText: String = "Dormant",
     val estimatedDistanceCm: Int = -1,
+    // The tolerance that was in force when this reading was produced (base
+    // threshold plus the motion allowance). Carried with the reading so a strike
+    // is classified weak/strong against the threshold that actually triggered it.
+    val thresholdUsed: Float = 0f,
+    val isStillNear: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 ) {
     val totalFieldMagnitude: Float
