@@ -153,13 +153,8 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         sensorEngine.setSmartAlarmEnabled(preferences.isSmartAlarmEnabled)
         sensorEngine.setSmartAlarmThreshold(preferences.smartAlarmThreshold)
         sensorEngine.setSleepingMode(preferences.isSleepingMode)
-        sensorEngine.setLocatorMode(
-            try {
-                LocatorMode.valueOf(preferences.locatorModeName)
-            } catch (e: Exception) {
-                LocatorMode.PROXIMITY_50CM
-            }
-        )
+        sensorEngine.setLocatorMode(LocatorMode.fromStored(preferences.locatorModeName))
+        sensorEngine.setCalibratedLevelPeak(preferences.calibratedLevelPeak)
 
         _isVisualModeEnabled.value = preferences.isVisualModeEnabled
         _vibrationWithVisual.value = preferences.vibrationWithVisual
@@ -206,7 +201,10 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                 // cleared threshold is "weak"; one that cleared it by a wide margin
                 // (a strong magnet, or the object passing very close) is "strong".
                 // Drives both the dot color and which haptic pattern plays.
-                val threshold = sensorEngine.calculateEffectiveThreshold()
+                // reading.thresholdUsed is the tolerance that was actually in force when
+                // this detection fired (including any phone-movement allowance).
+                val threshold = if (reading.thresholdUsed > 0f) reading.thresholdUsed
+                else sensorEngine.calculateEffectiveThreshold()
                 val isStrongHit = threshold > 0f && reading.deltaMagnitude >= threshold * _strongHitMultiplier.value
 
                 // 1. If in Screen Off Mode OR Visual Mode is enabled, light up the dot
@@ -286,10 +284,38 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     peakDelta = reading.deltaMagnitude,
                     dominantDirection = reading.dominantDirection,
                     fogLevel = 0f,
-                    thresholdAtEvent = sensorEngine.calculateEffectiveThreshold(),
+                    thresholdAtEvent = if (reading.thresholdUsed > 0f) reading.thresholdUsed
+                    else sensorEngine.calculateEffectiveThreshold(),
                     durationMs = 250L
                 )
                 repository.logDetectionEvent(event)
+            }
+        }
+
+        // Strong Magnet: the object is confirmed to be still close. Plays a softer second
+        // cue and keeps the stealth dot lit for as long as it stays close.
+        viewModelScope.launch {
+            sensorEngine.stillNearEvents.collectLatest {
+                if (!_isVisualModeEnabled.value || _vibrationWithVisual.value) {
+                    sensorEngine.notifyHapticPulse(700L)
+                    hapticEngine.playStillNearCue()
+                }
+            }
+        }
+        viewModelScope.launch {
+            sensorEngine.isStillNear.collectLatest { near ->
+                if (!(_isScreenOffModeActive.value || _isVisualModeEnabled.value)) return@collectLatest
+                visualDotGeneration++
+                val myGeneration = visualDotGeneration
+                if (near) {
+                    _isVisualDotStrong.value = true
+                    _isVisualDotVisible.value = true
+                } else {
+                    // Leave a short tail so a quick end isn't a flicker, unless a
+                    // newer strike re-lit the dot in the meantime.
+                    delay(1200L)
+                    if (visualDotGeneration == myGeneration) _isVisualDotVisible.value = false
+                }
             }
         }
 
@@ -329,10 +355,17 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
             sensorEngine.calibrationEvents.collectLatest { result ->
                 if (result.success) {
                     setSensitivity(result.suggestedSensitivity)
-                    _calibrationMessage.value =
-                        "Calibrated — peak ${"%.2f".format(result.peakDisturbance)}µT over " +
+                    preferences.calibratedLevelPeak = result.levelPeak
+                    val base = "Calibrated — peak ${"%.2f".format(result.peakDisturbance)}µT over " +
                         "${"%.2f".format(result.noiseFloorAtCapture)}µT room noise. " +
                         "Sensitivity set to ${result.suggestedSensitivity}."
+                    val warn = if (!result.confirmationUsable &&
+                        sensorEngine.locatorMode.value == LocatorMode.STRONG_MAGNET
+                    ) {
+                        " This object is too weak for Strong Magnet's “still near” check, " +
+                            "so it will behave like Weak Magnet. Use Weak Magnet for this object."
+                    } else ""
+                    _calibrationMessage.value = base + warn
                 } else {
                     _calibrationMessage.value =
                         "Didn't see a clear signal — bring the object closer during the next pass and try again."
