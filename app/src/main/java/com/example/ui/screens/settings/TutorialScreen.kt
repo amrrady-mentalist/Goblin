@@ -165,13 +165,13 @@ fun TutorialScreen(
                 TutorialStepItem(
                     icon = Icons.Default.Tune,
                     title = "2. Detection Mode",
-                    body = "Perimeter Proximity and the Earbud trick both react to a field change from any direction \u2014 the right choice for closing distance on a hand from whatever angle you're standing at. Up/Down Y-Axis only reacts to strict vertical motion and ignores everything else; use it only if the object moves straight up or down past a phone that's staying still."
+                    body = "Pick the preset that matches your object. Strong Magnet (watch charger, fridge magnet): any change in the field triggers the cue, then a second, softer double-pulse tells you the object is STILL close \u2014 if it only passed by, you get no second cue. Weak Magnet (earbud): any change in the field triggers the cue, from any direction. Weak Magnet \u2013 Up/Down: same, but only when the hand moves up or down; sideways movement is ignored. Strong Magnet needs the object to move the field by roughly 2 \u00b5T or more when calibrated; if yours doesn't, the calibration message will tell you to use Weak Magnet instead."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.Speed,
                     title = "3. Sensitivity",
-                    body = "Sensitivity sets how large a magnetic ripple has to be to count as a detection while the phone is resting. Calibrate To Object below sets it automatically \u2014 you shouldn't usually need to hand-tune it unless you want to nudge the result afterward. While the phone itself is being moved or handled, detection pauses on purpose so its own motion can't cause false buzzes."
+                    body = "Sensitivity sets how large a magnetic ripple has to be to count as a detection while the phone is resting. Calibrate To Object below sets it automatically \u2014 you shouldn't usually need to hand-tune it unless you want to nudge the result afterward. Phone movement no longer switches detection off: instead the app measures how much the phone is moving or turning and temporarily asks for a bigger change before it reacts, then relaxes again over about a second and a half once the phone is still. Adaptive Sensitivity controls how much movement is forgiven \u2014 raise it to stay sharper while moving, lower it if the phone buzzes when you move it."
                 )
 
                 TutorialStepItem(
