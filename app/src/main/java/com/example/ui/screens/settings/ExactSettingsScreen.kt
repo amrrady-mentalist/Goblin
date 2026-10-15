@@ -124,7 +124,7 @@ fun ExactSettingsScreen(
     objectCalibrationPeak: Float = 0f,
     calibrationMessage: String? = null,
     strongHitMultiplier: Float = 2.2f,
-    locatorMode: LocatorMode = LocatorMode.PROXIMITY_50CM,
+    locatorMode: LocatorMode = LocatorMode.WEAK_MAGNET,
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
@@ -426,7 +426,7 @@ fun ExactSettingsScreen(
                     }
                 }
                 Text(
-                    text = "Perimeter Proximity and the Earbud trick both react to any movement near the phone, from any direction. Up/Down Y-Axis only reacts to vertical motion and ignores everything else — use it only if the object always moves straight up or down past a stationary phone.",
+                    text = "Pick the preset that matches tonight's object, then run Calibrate Object once. Strong Magnet gives a second, softer cue when the object stays close. Weak Magnet reacts to any change in the field from any direction. Weak Magnet – Up/Down only reacts when the hand moves up or down and ignores sideways movement.",
                     color = TextDescColor,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
