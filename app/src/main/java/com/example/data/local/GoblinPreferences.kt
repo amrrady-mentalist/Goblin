@@ -32,6 +32,7 @@ class GoblinPreferences(context: Context) {
         private const val KEY_UT_TRIGGER_ENABLED = "key_ut_trigger_enabled"
         private const val KEY_UT_BASELINE_PATTERN = "key_ut_baseline_pattern"
         private const val KEY_UT_PEAK_PATTERN = "key_ut_peak_pattern"
+        private const val KEY_CALIBRATED_LEVEL_PEAK = "key_calibrated_level_peak"
     }
 
     var isTrickRunning: Boolean
@@ -75,8 +76,13 @@ class GoblinPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_VIBRATION_WITH_VISUAL, value).apply()
 
     var locatorModeName: String
-        get() = prefs.getString(KEY_LOCATOR_MODE, "PROXIMITY_50CM") ?: "PROXIMITY_50CM"
+        get() = prefs.getString(KEY_LOCATOR_MODE, "WEAK_MAGNET") ?: "WEAK_MAGNET"
         set(value) = prefs.edit().putString(KEY_LOCATOR_MODE, value).apply()
+
+    /** How far the last calibrated object moved the field level (µT); 0 = never calibrated. */
+    var calibratedLevelPeak: Float
+        get() = prefs.getFloat(KEY_CALIBRATED_LEVEL_PEAK, 0f)
+        set(value) = prefs.edit().putFloat(KEY_CALIBRATED_LEVEL_PEAK, value).apply()
 
     var hapticTypeName: String
         get() = prefs.getString(KEY_HAPTIC_TYPE, "DOUBLE_STRONG") ?: "DOUBLE_STRONG"
