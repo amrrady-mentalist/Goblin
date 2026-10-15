@@ -143,6 +143,25 @@ class DiscreetHapticEngine(private val context: Context) {
         }
     }
 
+    /**
+     * Strong Magnet's second cue: "the object is still close". Two short, softer pulses,
+     * clearly different from the main detection pattern.
+     */
+    fun playStillNearCue() {
+        if (!isEnabled || hapticType == HapticFeedbackType.MUTE) return
+        val vib = vibrator ?: return
+        if (!vib.hasVibrator()) return
+        val amp = (140 * strength.multiplier).toInt().coerceIn(70, 255)
+        val timings = longArrayOf(0, 90, 120, 90)
+        val amplitudes = intArrayOf(0, amp, 0, amp)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vib.hasAmplitudeControl()) {
+            vib.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(timings, -1)
+        }
+    }
+
     fun playWakeConfirmation() {
         val vib = vibrator ?: return
         if (!vib.hasVibrator()) return
