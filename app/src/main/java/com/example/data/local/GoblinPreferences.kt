@@ -32,6 +32,7 @@ class GoblinPreferences(context: Context) {
         private const val KEY_VIBE_LENGTH = "key_vibe_length"
         private const val KEY_SECOND_PATTERN = "key_second_pattern"
         private const val KEY_SECOND_COUNT = "key_second_count"
+        private const val KEY_DARK_MODE = "key_dark_mode"
     }
 
     var isTrickRunning: Boolean
@@ -109,4 +110,8 @@ class GoblinPreferences(context: Context) {
     var secondCount: Int
         get() = prefs.getInt(KEY_SECOND_COUNT, 2)
         set(value) = prefs.edit().putInt(KEY_SECOND_COUNT, value).apply()
+
+    var isDarkMode: Boolean
+        get() = prefs.getBoolean(KEY_DARK_MODE, true)
+        set(value) = prefs.edit().putBoolean(KEY_DARK_MODE, value).apply()
 }

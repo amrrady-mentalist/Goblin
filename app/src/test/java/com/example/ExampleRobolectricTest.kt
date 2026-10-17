@@ -38,4 +38,15 @@ class ExampleRobolectricTest {
     assertEquals(5f, reading.deltaMagnitude, 0.01f)
     assertEquals(com.example.domain.model.MagneticDirection.SCREEN_FACE, reading.dominantDirection)
   }
+
+  @Test
+  fun `test dark mode preference defaults to true for splash screen matching`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = com.example.data.local.GoblinPreferences(context)
+    assertEquals(true, prefs.isDarkMode)
+    prefs.isDarkMode = false
+    assertEquals(false, prefs.isDarkMode)
+    prefs.isDarkMode = true
+    assertEquals(true, prefs.isDarkMode)
+  }
 }

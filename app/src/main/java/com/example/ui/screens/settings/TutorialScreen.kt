@@ -46,20 +46,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-// Same frosted-glass language as the Settings screen, so switching tabs feels
-// like one app rather than two different ones.
-private val GradientTop = Color(0xFFEFE9FF)
-private val GradientBottom = Color(0xFFE3F3FF)
-private val ScreenGradient = Brush.verticalGradient(listOf(GradientTop, GradientBottom))
-private val BlobLavender = Color(0xFFD6C6FF)
-private val BlobSky = Color(0xFFBFE4FF)
-private val TextTitleColor = Color(0xFF241B3D)
-private val TextDescColor = Color(0xFF6B6480)
-private val YellowAccent = Color(0xFFEAB308)
-private val GlassCardBg = Color(0xFFFFFFFF).copy(alpha = 0.55f)
-private val GlassCardBorder = Color(0xFFFFFFFF).copy(alpha = 0.65f)
-private val GlassStroke = Color(0xFFFFFFFF).copy(alpha = 0.45f)
+import com.example.ui.theme.LocalGoblinThemeColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,11 +55,12 @@ fun TutorialScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val colors = LocalGoblinThemeColors.current
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScreenGradient)
+            .background(colors.screenGradient)
     ) {
         Box(
             modifier = Modifier
@@ -80,7 +68,7 @@ fun TutorialScreen(
                 .offset(x = (-70).dp, y = 420.dp)
                 .blur(90.dp)
                 .clip(CircleShape)
-                .background(BlobLavender.copy(alpha = 0.5f))
+                .background(colors.blob1)
         )
         Box(
             modifier = Modifier
@@ -89,7 +77,7 @@ fun TutorialScreen(
                 .offset(x = 60.dp, y = 120.dp)
                 .blur(90.dp)
                 .clip(CircleShape)
-                .background(BlobSky.copy(alpha = 0.5f))
+                .background(colors.blob2)
         )
 
         Column(modifier = Modifier.fillMaxSize()) {
@@ -97,7 +85,7 @@ fun TutorialScreen(
                 title = {
                     Text(
                         text = "Performance & Setup Guide",
-                        color = TextTitleColor,
+                        color = colors.textTitle,
                         fontSize = 19.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -107,14 +95,14 @@ fun TutorialScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = TextTitleColor
+                            tint = colors.textTitle
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
 
-            HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
+            HorizontalDivider(color = colors.cardStroke, thickness = 0.8.dp)
 
             Column(
                 modifier = Modifier
@@ -128,8 +116,8 @@ fun TutorialScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(GlassCardBg)
-                        .border(1.dp, GlassCardBorder, RoundedCornerShape(14.dp))
+                        .background(colors.cardBg)
+                        .border(1.dp, colors.cardBorder, RoundedCornerShape(14.dp))
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -137,19 +125,19 @@ fun TutorialScreen(
                     Icon(
                         imageVector = Icons.Default.Info,
                         contentDescription = "Performance Guide",
-                        tint = YellowAccent,
+                        tint = colors.accentGold,
                         modifier = Modifier.size(40.dp)
                     )
                     Column {
                         Text(
                             text = "How this works",
-                            color = TextTitleColor,
+                            color = colors.textTitle,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = "The phone's magnetometer learns the room, then you calibrate it to tonight's magnetic object before you go on.",
-                            color = TextDescColor,
+                            color = colors.textDesc,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
                         )
@@ -222,12 +210,13 @@ private fun TutorialStepItem(
     title: String,
     body: String
 ) {
+    val colors = LocalGoblinThemeColors.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(GlassCardBg)
-            .border(1.dp, GlassCardBorder, RoundedCornerShape(14.dp))
+            .background(colors.cardBg)
+            .border(1.dp, colors.cardBorder, RoundedCornerShape(14.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -239,19 +228,19 @@ private fun TutorialStepItem(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFFEF3C7)),
+                    .background(colors.badgeBg),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = YellowAccent,
+                    tint = colors.badgeIconTint,
                     modifier = Modifier.size(18.dp)
                 )
             }
             Text(
                 text = title,
-                color = TextTitleColor,
+                color = colors.textTitle,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -259,7 +248,7 @@ private fun TutorialStepItem(
 
         Text(
             text = body,
-            color = TextDescColor,
+            color = colors.textDesc,
             fontSize = 13.sp,
             lineHeight = 18.sp
         )

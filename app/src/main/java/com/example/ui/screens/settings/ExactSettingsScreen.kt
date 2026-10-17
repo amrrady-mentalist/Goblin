@@ -17,10 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +41,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.example.ui.theme.LocalGoblinThemeColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,26 +67,7 @@ import com.example.sensor.DetectionModel
 import com.example.sensor.MagneticSensorEngine.CalibrationPhase
 import kotlin.math.roundToInt
 
-// Frosted-glass design language: a soft gradient backdrop with a few blurred
-// color blobs behind translucent "frosted" cards.
-private val GradientTop = Color(0xFFEFE9FF)
-private val GradientBottom = Color(0xFFE3F3FF)
-private val ScreenGradient = Brush.verticalGradient(listOf(GradientTop, GradientBottom))
-private val BlobLavender = Color(0xFFD6C6FF)
-private val BlobSky = Color(0xFFBFE4FF)
-private val BlobPeach = Color(0xFFFFE1C7)
-
-private val TextTitleColor = Color(0xFF241B3D)
-private val TextDescColor = Color(0xFF6B6480)
-private val YellowAccent = Color(0xFFEAB308)
-private val YellowTrack = Color(0xFFFACC15)
-private val ButtonDark = Color(0xFF1E1533)
 private val WarnRed = Color(0xFFDC2626)
-
-private val GlassCardBg = Color(0xFFFFFFFF).copy(alpha = 0.55f)
-private val GlassCardBorder = Color(0xFFFFFFFF).copy(alpha = 0.65f)
-private val GlassStroke = Color(0xFFFFFFFF).copy(alpha = 0.45f)
-private val GlassMuted = Color(0xFFFFFFFF).copy(alpha = 0.40f)
 
 // Patterns offered for each cue. "Off" on the main cue means dot only; on the second cue
 // it means no second cue.
@@ -123,6 +108,9 @@ fun ExactSettingsScreen(
     calibrationPhase: CalibrationPhase,
     calibrationProgress: Float,
     calibrationMessage: String?,
+    // Theme
+    isDarkMode: Boolean = true,
+    onToggleDarkMode: () -> Unit = {},
     // Callbacks
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
@@ -172,10 +160,12 @@ fun ExactSettingsScreen(
         wasAttuning = (creatureState == CreatureState.CALIBRATING)
     }
 
+    val colors = LocalGoblinThemeColors.current
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScreenGradient)
+            .background(colors.screenGradient)
     ) {
         Box(
             modifier = Modifier
@@ -183,7 +173,7 @@ fun ExactSettingsScreen(
                 .offset(x = (-80).dp, y = (-60).dp)
                 .blur(90.dp)
                 .clip(CircleShape)
-                .background(BlobLavender.copy(alpha = 0.55f))
+                .background(colors.blob1)
         )
         Box(
             modifier = Modifier
@@ -192,7 +182,7 @@ fun ExactSettingsScreen(
                 .offset(x = 70.dp, y = 40.dp)
                 .blur(90.dp)
                 .clip(CircleShape)
-                .background(BlobSky.copy(alpha = 0.55f))
+                .background(colors.blob2)
         )
         Box(
             modifier = Modifier
@@ -201,7 +191,7 @@ fun ExactSettingsScreen(
                 .offset(x = (-60).dp, y = 60.dp)
                 .blur(100.dp)
                 .clip(CircleShape)
-                .background(BlobPeach.copy(alpha = 0.5f))
+                .background(colors.blob3)
         )
 
         Column(
@@ -211,15 +201,37 @@ fun ExactSettingsScreen(
         ) {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Goblin",
-                        color = TextTitleColor,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Goblin",
+                            color = colors.textTitle,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        if (colors.isDark) {
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text(
+                                text = "DETECTOR",
+                                color = colors.accentGold,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 2.sp
+                            )
+                        }
+                    }
                 },
                 actions = {
+                    IconButton(
+                        onClick = onToggleDarkMode,
+                        modifier = Modifier.testTag("settings_theme_toggle")
+                    ) {
+                        Icon(
+                            imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
+                            tint = colors.accentGold
+                        )
+                    }
                     IconButton(
                         onClick = onOpenTutorial,
                         modifier = Modifier.testTag("settings_tutorial_action")
@@ -227,7 +239,7 @@ fun ExactSettingsScreen(
                         Icon(
                             imageVector = Icons.Default.Info,
                             contentDescription = "Tutorial",
-                            tint = TextDescColor
+                            tint = colors.textDesc
                         )
                     }
                 },
@@ -252,8 +264,8 @@ fun ExactSettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .background(GlassCardBg)
-                            .border(1.dp, GlassCardBorder, RoundedCornerShape(14.dp))
+                            .background(colors.cardBg)
+                            .border(1.dp, colors.cardBorder, RoundedCornerShape(14.dp))
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                             .testTag("room_calibration_banner"),
                         verticalAlignment = Alignment.CenterVertically,
@@ -263,11 +275,11 @@ fun ExactSettingsScreen(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp,
-                                color = YellowAccent
+                                color = colors.accentGold
                             )
                             Text(
                                 text = "Reading the room. Keep the phone still.",
-                                color = TextTitleColor,
+                                color = colors.textTitle,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -283,7 +295,7 @@ fun ExactSettingsScreen(
                             }
                             Text(
                                 text = "Ready",
-                                color = TextTitleColor,
+                                color = colors.textTitle,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -306,14 +318,18 @@ fun ExactSettingsScreen(
                     ) {
                         Text(
                             text = "Trick",
-                            color = TextTitleColor,
+                            color = colors.textTitle,
                             fontSize = 16.sp,
                             maxLines = 1,
                             softWrap = false
                         )
                         Button(
                             onClick = onToggleTrick,
-                            colors = ButtonDefaults.buttonColors(containerColor = ButtonDark),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.buttonDark,
+                                contentColor = colors.buttonText
+                            ),
+                            border = if (colors.isDark) BorderStroke(1.dp, colors.accentGold.copy(alpha = 0.45f)) else null,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .height(40.dp)
@@ -321,7 +337,7 @@ fun ExactSettingsScreen(
                         ) {
                             Text(
                                 text = if (isTrickRunning) "Stop" else "Start",
-                                color = Color.White,
+                                color = colors.buttonText,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -337,7 +353,7 @@ fun ExactSettingsScreen(
                         ) {
                             Text(
                                 text = reading.scentStatusText,
-                                color = TextDescColor,
+                                color = colors.textDesc,
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -345,8 +361,9 @@ fun ExactSettingsScreen(
                             )
                             Text(
                                 text = "$liveMicroTesla µT",
-                                color = TextDescColor,
+                                color = if (colors.isDark) colors.accentGold else colors.textDesc,
                                 fontSize = 12.sp,
+                                fontWeight = if (colors.isDark) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -357,8 +374,8 @@ fun ExactSettingsScreen(
                                 .fillMaxWidth()
                                 .height(6.dp)
                                 .clip(RoundedCornerShape(3.dp)),
-                            color = YellowAccent,
-                            trackColor = GlassMuted
+                            color = colors.accentGold,
+                            trackColor = colors.cardMuted
                         )
                     }
                 }
@@ -409,7 +426,7 @@ fun ExactSettingsScreen(
                     )
                     Text(
                         text = rangeSummary,
-                        color = TextDescColor,
+                        color = colors.textDesc,
                         fontSize = 12.sp,
                         lineHeight = 16.sp,
                         modifier = Modifier.testTag("range_summary")
@@ -429,14 +446,14 @@ fun ExactSettingsScreen(
                         }
                         Text(
                             text = step,
-                            color = YellowAccent,
+                            color = colors.accentGold,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
                         Text(
                             text = text,
-                            color = TextTitleColor,
+                            color = colors.textTitle,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
                             lineHeight = 22.sp
@@ -447,29 +464,35 @@ fun ExactSettingsScreen(
                                 .fillMaxWidth()
                                 .height(8.dp)
                                 .clip(RoundedCornerShape(4.dp)),
-                            color = YellowAccent,
-                            trackColor = GlassMuted
+                            color = colors.accentGold,
+                            trackColor = colors.cardMuted
                         )
                         OutlinedButton(
                             onClick = onCancelCalibration,
                             shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, colors.cardBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textTitle),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(44.dp)
                                 .testTag("cancel_calibration_button")
                         ) {
-                            Text("Cancel", color = TextTitleColor, maxLines = 1)
+                            Text("Cancel", color = colors.textTitle, maxLines = 1)
                         }
                     } else {
                         Text(
                             text = "Takes 10 seconds and sets the sliders for you. You can still adjust any of them afterwards.",
-                            color = TextDescColor,
+                            color = colors.textDesc,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
                         )
                         Button(
                             onClick = onCalibrate,
-                            colors = ButtonDefaults.buttonColors(containerColor = ButtonDark),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.buttonDark,
+                                contentColor = colors.buttonText
+                            ),
+                            border = if (colors.isDark) BorderStroke(1.dp, colors.accentGold.copy(alpha = 0.5f)) else null,
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -478,7 +501,7 @@ fun ExactSettingsScreen(
                         ) {
                             Text(
                                 text = "Calibrate",
-                                color = Color.White,
+                                color = colors.buttonText,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1
@@ -498,13 +521,13 @@ fun ExactSettingsScreen(
                     if (vibePattern == VibePattern.OFF) {
                         Text(
                             text = "No vibration. Only the dot shows a detection.",
-                            color = TextDescColor,
+                            color = colors.textDesc,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
                         )
                     } else {
                         if (vibePattern != VibePattern.BUZZ) {
-                            Text(text = "Vibrations", color = TextTitleColor, fontSize = 14.sp, maxLines = 1)
+                            Text(text = "Vibrations", color = colors.textTitle, fontSize = 14.sp, maxLines = 1)
                             ChipRow(
                                 labels = listOf("1", "2", "3", "4", "5"),
                                 selected = vibeCount - 1,
@@ -551,7 +574,7 @@ fun ExactSettingsScreen(
                 GlassCard(title = "Second cue") {
                     Text(
                         text = "For strong objects: plays about a second after the first cue if the object stays close.",
-                        color = TextDescColor,
+                        color = colors.textDesc,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
                     )
@@ -563,7 +586,7 @@ fun ExactSettingsScreen(
                     )
                     if (secondPattern != VibePattern.OFF) {
                         if (secondPattern != VibePattern.BUZZ) {
-                            Text(text = "Vibrations", color = TextTitleColor, fontSize = 14.sp, maxLines = 1)
+                            Text(text = "Vibrations", color = colors.textTitle, fontSize = 14.sp, maxLines = 1)
                             ChipRow(
                                 labels = listOf("1", "2", "3", "4", "5"),
                                 selected = secondCount - 1,
@@ -578,6 +601,18 @@ fun ExactSettingsScreen(
                 // ---- More ----
                 GlassCard(title = "More") {
                     SwitchRow(
+                        title = "Dark theme",
+                        checked = isDarkMode,
+                        onChange = { onToggleDarkMode() },
+                        tag = "dark_mode_switch"
+                    )
+                    Text(
+                        text = "Matches the midnight cosmic blue and gold theme from the splash screen.",
+                        color = colors.textDesc,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                    SwitchRow(
                         title = "Show dot",
                         checked = isVisualModeEnabled,
                         onChange = onToggleVisualMode,
@@ -585,7 +620,7 @@ fun ExactSettingsScreen(
                     )
                     Text(
                         text = "A tiny dot in the top-left corner lights up on a detection.",
-                        color = TextDescColor,
+                        color = colors.textDesc,
                         fontSize = 12.sp,
                         lineHeight = 16.sp
                     )
@@ -602,7 +637,11 @@ fun ExactSettingsScreen(
                 // ---- Screen Off Mode: last, once everything is set ----
                 Button(
                     onClick = { onToggleScreenOffMode(true) },
-                    colors = ButtonDefaults.buttonColors(containerColor = ButtonDark),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.buttonDark,
+                        contentColor = colors.buttonText
+                    ),
+                    border = if (colors.isDark) BorderStroke(1.dp, colors.accentGold.copy(alpha = 0.5f)) else null,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -611,7 +650,7 @@ fun ExactSettingsScreen(
                 ) {
                     Text(
                         text = "Turn Screen Off",
-                        color = Color.White,
+                        color = colors.buttonText,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1
@@ -619,7 +658,7 @@ fun ExactSettingsScreen(
                 }
                 Text(
                     text = "Turns the screen pitch black so it looks locked. Detection keeps running. Swipe down with 2 fingers to come back.",
-                    color = TextDescColor,
+                    color = colors.textDesc,
                     fontSize = 12.sp,
                     lineHeight = 16.sp,
                     textAlign = TextAlign.Center,
@@ -646,19 +685,20 @@ private fun GlassCard(
     title: String? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val colors = LocalGoblinThemeColors.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(GlassCardBg)
-            .border(1.dp, GlassCardBorder, RoundedCornerShape(18.dp))
+            .background(colors.cardBg)
+            .border(1.dp, colors.cardBorder, RoundedCornerShape(18.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (title != null) {
             Text(
                 text = title,
-                color = TextTitleColor,
+                color = colors.textTitle,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1
@@ -692,6 +732,7 @@ private fun SwitchRow(
     onChange: (Boolean) -> Unit,
     tag: String
 ) {
+    val colors = LocalGoblinThemeColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -699,7 +740,7 @@ private fun SwitchRow(
     ) {
         Text(
             text = title,
-            color = TextTitleColor,
+            color = colors.textTitle,
             fontSize = 16.sp,
             maxLines = 1,
             softWrap = false,
@@ -710,9 +751,9 @@ private fun SwitchRow(
             onCheckedChange = onChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = YellowAccent,
+                checkedTrackColor = colors.accentGold,
                 uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = GlassMuted
+                uncheckedTrackColor = colors.cardMuted
             ),
             modifier = Modifier.testTag(tag)
         )
@@ -730,6 +771,7 @@ private fun LabeledSlider(
     onChange: (Float) -> Unit,
     tag: String
 ) {
+    val colors = LocalGoblinThemeColors.current
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -738,7 +780,7 @@ private fun LabeledSlider(
         ) {
             Text(
                 text = title,
-                color = TextTitleColor,
+                color = colors.textTitle,
                 fontSize = 16.sp,
                 maxLines = 1,
                 softWrap = false,
@@ -747,7 +789,7 @@ private fun LabeledSlider(
             )
             Text(
                 text = valueText,
-                color = TextDescColor,
+                color = colors.textDesc,
                 fontSize = 14.sp,
                 maxLines = 1,
                 softWrap = false
@@ -758,9 +800,9 @@ private fun LabeledSlider(
             onValueChange = onChange,
             valueRange = 0f..1f,
             colors = SliderDefaults.colors(
-                thumbColor = YellowAccent,
-                activeTrackColor = YellowTrack,
-                inactiveTrackColor = GlassStroke
+                thumbColor = colors.accentGold,
+                activeTrackColor = colors.accentGoldTrack,
+                inactiveTrackColor = colors.cardStroke
             ),
             modifier = Modifier.testTag(tag)
         )
@@ -770,8 +812,8 @@ private fun LabeledSlider(
                 .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(text = leftLabel, color = TextDescColor, fontSize = 12.sp, maxLines = 1, softWrap = false)
-            Text(text = rightLabel, color = TextDescColor, fontSize = 12.sp, maxLines = 1, softWrap = false)
+            Text(text = leftLabel, color = colors.textDesc, fontSize = 12.sp, maxLines = 1, softWrap = false)
+            Text(text = rightLabel, color = colors.textDesc, fontSize = 12.sp, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -784,6 +826,7 @@ private fun ChipRow(
     onSelect: (Int) -> Unit,
     tagPrefix: String
 ) {
+    val colors = LocalGoblinThemeColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -795,10 +838,10 @@ private fun ChipRow(
                     .weight(1f)
                     .height(40.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (isSelected) YellowAccent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.6f))
+                    .background(if (isSelected) colors.chipSelectedBg else colors.chipUnselectedBg)
                     .border(
                         1.dp,
-                        if (isSelected) YellowAccent else GlassMuted,
+                        if (isSelected) colors.chipSelectedBorder else colors.chipUnselectedBorder,
                         RoundedCornerShape(10.dp)
                     )
                     .clickable { onSelect(index) }
@@ -809,7 +852,7 @@ private fun ChipRow(
                     text = label,
                     fontSize = 12.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isSelected) Color(0xFF8A6200) else TextTitleColor,
+                    color = if (isSelected) colors.chipSelectedText else colors.chipUnselectedText,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center
@@ -821,14 +864,17 @@ private fun ChipRow(
 
 @Composable
 private fun TestButton(text: String, onClick: () -> Unit, tag: String) {
+    val colors = LocalGoblinThemeColors.current
     OutlinedButton(
         onClick = onClick,
         shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, colors.cardBorder),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textTitle),
         modifier = Modifier
             .fillMaxWidth()
             .height(42.dp)
             .testTag(tag)
     ) {
-        Text(text, color = TextTitleColor, maxLines = 1)
+        Text(text, color = colors.textTitle, maxLines = 1)
     }
 }

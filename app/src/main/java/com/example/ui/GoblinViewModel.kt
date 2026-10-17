@@ -72,6 +72,10 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     // newer event already lit it.
     private var visualDotGeneration = 0
 
+    // Dark Mode (matches the midnight & gold splash screen theme)
+    private val _isDarkMode = MutableStateFlow(true)
+    val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
+
     // --- Vibration settings ---
     private val _vibePattern = MutableStateFlow(VibePattern.PULSES)
     val vibePattern: StateFlow<VibePattern> = _vibePattern.asStateFlow()
@@ -145,6 +149,7 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
         _isVisualModeEnabled.value = preferences.isVisualModeEnabled
         _vibrationWithVisual.value = preferences.vibrationWithVisual
+        _isDarkMode.value = preferences.isDarkMode
         _vibePattern.value = preferences.vibePattern
         _vibeCount.value = preferences.vibeCount
         _vibeStrength.value = preferences.vibeStrength
@@ -390,6 +395,11 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     fun setVibrationWithVisual(enabled: Boolean) {
         _vibrationWithVisual.value = enabled
         preferences.vibrationWithVisual = enabled
+    }
+
+    fun setDarkMode(enabled: Boolean) {
+        _isDarkMode.value = enabled
+        preferences.isDarkMode = enabled
     }
 
     fun setTab(tab: PerformanceTab) {

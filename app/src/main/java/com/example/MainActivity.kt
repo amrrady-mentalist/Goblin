@@ -76,18 +76,8 @@ import com.example.ui.screens.settings.ExactSettingsScreen
 import com.example.ui.screens.settings.TutorialScreen
 import com.example.ui.screens.splash.SplashScreen
 import com.example.ui.screens.stealth.PitchBlackImmersiveOverlay
-import com.example.ui.theme.ElectricCyan
-import com.example.ui.theme.MidnightBg
-import com.example.ui.theme.MidnightCard
-import com.example.ui.theme.MidnightCardBorder
-import com.example.ui.theme.MidnightSurface
+import com.example.ui.theme.LocalGoblinThemeColors
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.theme.SlumberGreen
-import com.example.ui.theme.StirringAmber
-import com.example.ui.theme.StrikeMagenta
-import com.example.ui.theme.TextDim
-import com.example.ui.theme.TextHigh
-import com.example.ui.theme.TextMedium
 
 class MainActivity : ComponentActivity() {
 
@@ -98,7 +88,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            MyApplicationTheme {
+            val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
+            MyApplicationTheme(darkTheme = isDarkMode) {
                 GoblinMainApp(viewModel = viewModel)
             }
         }
@@ -152,18 +143,18 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val secondCount by viewModel.secondCount.collectAsStateWithLifecycle()
 
     val isScreenOffModeActive by viewModel.isScreenOffModeActive.collectAsStateWithLifecycle()
+    val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
+    val colors = LocalGoblinThemeColors.current
 
-    // The Settings/Tutorial screens are light (frosted glass over a pale gradient),
-    // so the status bar icons need to render dark to stay visible -- otherwise
-    // they're white-on-white. The stealth screen hides the status bar entirely, so
-    // this only matters while that's not showing.
+    // In dark mode (matching the splash screen) or stealth mode, status bar icons render light/white.
+    // In light mode, status bar icons render dark for visibility against the pale gradient.
     val statusBarContext = LocalContext.current
     val statusBarView = LocalView.current
     SideEffect {
         val window = (statusBarContext as? Activity)?.window
         if (window != null) {
             WindowCompat.getInsetsController(window, statusBarView).isAppearanceLightStatusBars =
-                !isScreenOffModeActive
+                !isScreenOffModeActive && !isDarkMode
         }
     }
     val isVisualModeEnabled by viewModel.isVisualModeEnabled.collectAsStateWithLifecycle()
@@ -178,22 +169,14 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
 
     var isSplashVisible by remember { mutableStateOf(true) }
 
-    // Frosted-glass shell: a soft translucent nav bar over the same light gradient
-    // the two screens use, replacing the old dark "Obsidian" chrome so the whole
-    // app reads as one consistent, modern look rather than a dark frame around
-    // light content.
-    val glassNavBg = Color(0xFFFFFFFF).copy(alpha = 0.75f)
-    val glassNavSelected = Color(0xFF241B3D)
-    val glassNavUnselected = Color(0xFF8A86A0)
-
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEFE9FF))) {
+    Box(modifier = Modifier.fillMaxSize().background(colors.screenGradient)) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             bottomBar = {
                 NavigationBar(
-                    containerColor = glassNavBg,
-                    contentColor = glassNavUnselected,
+                    containerColor = colors.navBg,
+                    contentColor = colors.navUnselected,
                     modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
                 ) {
                     NavigationBarItem(
@@ -207,11 +190,11 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                         },
                         label = { Text("Settings") },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = glassNavSelected,
-                            selectedTextColor = Color(0xFFEAB308),
-                            indicatorColor = Color(0xFFEAB308).copy(alpha = 0.25f),
-                            unselectedIconColor = glassNavUnselected,
-                            unselectedTextColor = glassNavUnselected
+                            selectedIconColor = colors.navSelected,
+                            selectedTextColor = colors.accentGold,
+                            indicatorColor = colors.navIndicator,
+                            unselectedIconColor = colors.navUnselected,
+                            unselectedTextColor = colors.navUnselected
                         ),
                         modifier = Modifier.testTag("tab_settings")
                     )
@@ -227,11 +210,11 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                         },
                         label = { Text("Tutorial") },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = glassNavSelected,
-                            selectedTextColor = Color(0xFFEAB308),
-                            indicatorColor = Color(0xFFEAB308).copy(alpha = 0.25f),
-                            unselectedIconColor = glassNavUnselected,
-                            unselectedTextColor = glassNavUnselected
+                            selectedIconColor = colors.navSelected,
+                            selectedTextColor = colors.accentGold,
+                            indicatorColor = colors.navIndicator,
+                            unselectedIconColor = colors.navUnselected,
+                            unselectedTextColor = colors.navUnselected
                         ),
                         modifier = Modifier.testTag("tab_tutorial")
                     )
@@ -271,6 +254,8 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             calibrationPhase = calibrationPhase,
                             calibrationProgress = calibrationProgress,
                             calibrationMessage = calibrationMessage,
+                            isDarkMode = isDarkMode,
+                            onToggleDarkMode = { viewModel.setDarkMode(!isDarkMode) },
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
                             onTerritoryChange = { viewModel.setTerritory(it) },
