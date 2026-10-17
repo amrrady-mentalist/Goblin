@@ -51,7 +51,33 @@ class FieldDetector {
     )
 
     // ---- Settings (written from other threads, read on the sensor thread) ----
-    @Volatile var mode: LocatorMode = LocatorMode.WEAK_MAGNET
+    /** Only count a change that is mainly vertical (the Up/Down switch). */
+    @Volatile var verticalOnly: Boolean = false
+
+    /** Run the "is the object still close?" check after a detection (strong objects). */
+    @Volatile var stillNearCheck: Boolean = false
+
+    /**
+     * Convenience for tests and older code: sets [verticalOnly] / [stillNearCheck] from one of
+     * the old three presets.
+     */
+    var mode: LocatorMode
+        get() = when {
+            verticalOnly -> LocatorMode.WEAK_MAGNET_UP_DOWN
+            stillNearCheck -> LocatorMode.STRONG_MAGNET
+            else -> LocatorMode.WEAK_MAGNET
+        }
+        set(value) {
+            verticalOnly = value == LocatorMode.WEAK_MAGNET_UP_DOWN
+            stillNearCheck = value == LocatorMode.STRONG_MAGNET
+        }
+
+    /**
+     * The size of change (µT) that counts as a detection when the phone is still. When 0,
+     * it is worked out from [sensitivity]; the app sets it from Territory, Magnetic Power
+     * and Magnet Movement (see [DetectionModel]).
+     */
+    @Volatile var baseThresholdUt: Float = 0f
     @Volatile var sensitivity: Float = 1.9f
     @Volatile var adaptiveSensitivity: Int = 8
 
@@ -80,7 +106,10 @@ class FieldDetector {
         else DEFAULT_LEVEL_MARGIN
     }
 
-    fun baseThreshold(): Float = max(0.35f, 3.8f / sensitivity.coerceAtLeast(0.1f))
+    fun baseThreshold(): Float {
+        val fixed = baseThresholdUt
+        return if (fixed > 0f) max(0.35f, fixed) else max(0.35f, 3.8f / sensitivity.coerceAtLeast(0.1f))
+    }
 
     // ---- Inertial inputs ----
     private var lastAccelMs = -1_000_000L
@@ -313,7 +342,7 @@ class FieldDetector {
 
         var disturbance = spanS
         var directionOk = true
-        if (mode == LocatorMode.WEAK_MAGNET_UP_DOWN) {
+        if (verticalOnly) {
             // World frame (gravity-anchored): Z is true vertical however the phone is
             // oriented. Without a rotation reference, fall back to the phone's own axes.
             val vertical = if (hasWorld) spanZ else spanY
@@ -375,7 +404,7 @@ class FieldDetector {
 
         if (isTrigger) {
             lastTriggerMs = t
-            if (mode == LocatorMode.STRONG_MAGNET && isConfirmationUsable()) {
+            if (stillNearCheck && isConfirmationUsable()) {
                 holdActive = true
                 holdConfirmed = false
                 isStillNear = false
