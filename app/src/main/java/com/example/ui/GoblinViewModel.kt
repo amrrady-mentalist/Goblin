@@ -8,23 +8,20 @@ import com.example.data.local.GoblinDatabase
 import com.example.data.local.GoblinPreferences
 import com.example.data.local.GoblinRepository
 import com.example.domain.model.CreatureState
-import com.example.domain.model.HapticFeedbackType
-import com.example.domain.model.LocatorMode
 import com.example.domain.model.MagneticReading
-import com.example.domain.model.UtBaselinePattern
-import com.example.domain.model.UtPeakPattern
-import com.example.domain.model.UtTriggerTier
-import com.example.domain.model.VibrationStrength
+import com.example.domain.model.VibePattern
 import com.example.haptics.DiscreetHapticEngine
+import com.example.haptics.VibePlan
+import com.example.haptics.VibeSpec
+import com.example.sensor.DetectionModel
 import com.example.sensor.MagneticSensorEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 enum class PerformanceTab {
     SETTINGS,
@@ -41,79 +38,82 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     val readingState: StateFlow<MagneticReading>
     val creatureState: StateFlow<CreatureState>
     val isPoweredOn: StateFlow<Boolean>
-    val locatorMode: StateFlow<LocatorMode>
-
-    // Settings from Screenshot
     val isTrickRunning: StateFlow<Boolean>
-    val sensitivity: StateFlow<Float>
-    val adaptiveSensitivity: StateFlow<Int>
-    val isSmartAlarmEnabled: StateFlow<Boolean>
-    val smartAlarmThreshold: StateFlow<Float>
-    val isSleepingMode: StateFlow<Boolean>
     val liveMicroTesla: StateFlow<Int>
+    val isSaturated: StateFlow<Boolean>
+
+    // The four sliders and the Up/Down switch
+    val territory: StateFlow<Float>
+    val magnetPower: StateFlow<Float>
+    val magnetMovement: StateFlow<Float>
+    val phoneMovement: StateFlow<Int>
+    val verticalOnly: StateFlow<Boolean>
+    val rangeSummary: StateFlow<String>
 
     // Screen Off Mode (Pitch Black Immersive Mode)
     private val _isScreenOffModeActive = MutableStateFlow(false)
     val isScreenOffModeActive: StateFlow<Boolean> = _isScreenOffModeActive.asStateFlow()
 
-    // Visual Mode (Tiny Green Dot in top-left corner) - default to true
+    // Visual Mode (tiny dot in the top-left corner)
     private val _isVisualModeEnabled = MutableStateFlow(true)
     val isVisualModeEnabled: StateFlow<Boolean> = _isVisualModeEnabled.asStateFlow()
 
-    // Vibration with Visual Mode (use both vibration and visual or visual only)
+    // Vibrate as well as show the dot (otherwise the dot is the only cue)
     private val _vibrationWithVisual = MutableStateFlow(true)
     val vibrationWithVisual: StateFlow<Boolean> = _vibrationWithVisual.asStateFlow()
 
-    // Live state of the tiny stealth dot
+    // Live state of the tiny dot
     private val _isVisualDotVisible = MutableStateFlow(false)
     val isVisualDotVisible: StateFlow<Boolean> = _isVisualDotVisible.asStateFlow()
     // true = strong/close hit (dot renders green), false = weak hit (renders yellow)
     private val _isVisualDotStrong = MutableStateFlow(false)
     val isVisualDotStrong: StateFlow<Boolean> = _isVisualDotStrong.asStateFlow()
-    // Bumped on every strike so a stale auto-hide timer from an earlier strike
-    // can't turn the dot off after a newer strike already re-lit it.
+    // Bumped on every change so a stale auto-hide timer can't turn the dot off after a
+    // newer event already lit it.
     private var visualDotGeneration = 0
 
-    // Two-tier haptic feel for a single confirmed detection: "Detected" plays when
-    // the object just cleared threshold, "Strong/Close" plays when it cleared it by
-    // a wide margin. Both now key off the one relative detector below, not a
-    // separate absolute-µT trigger.
-    private val _isUtTriggerEnabled = MutableStateFlow(true)
-    val isUtTriggerEnabled: StateFlow<Boolean> = _isUtTriggerEnabled.asStateFlow()
+    // --- Vibration settings ---
+    private val _vibePattern = MutableStateFlow(VibePattern.PULSES)
+    val vibePattern: StateFlow<VibePattern> = _vibePattern.asStateFlow()
+    private val _vibeCount = MutableStateFlow(2)
+    val vibeCount: StateFlow<Int> = _vibeCount.asStateFlow()
+    private val _vibeStrength = MutableStateFlow(80)
+    val vibeStrength: StateFlow<Int> = _vibeStrength.asStateFlow()
+    private val _vibeSpeed = MutableStateFlow(50)
+    val vibeSpeed: StateFlow<Int> = _vibeSpeed.asStateFlow()
+    private val _vibeLength = MutableStateFlow(40)
+    val vibeLength: StateFlow<Int> = _vibeLength.asStateFlow()
+    private val _secondPattern = MutableStateFlow(VibePattern.TICK)
+    val secondPattern: StateFlow<VibePattern> = _secondPattern.asStateFlow()
+    private val _secondCount = MutableStateFlow(2)
+    val secondCount: StateFlow<Int> = _secondCount.asStateFlow()
 
-    private val _utBaselinePattern = MutableStateFlow(UtBaselinePattern.SINGLE_PULSE)
-    val utBaselinePattern: StateFlow<UtBaselinePattern> = _utBaselinePattern.asStateFlow()
+    private fun mainSpec() = VibeSpec(
+        _vibePattern.value, _vibeCount.value, _vibeStrength.value, _vibeSpeed.value, _vibeLength.value
+    )
 
-    private val _utPeakPattern = MutableStateFlow(UtPeakPattern.CONTINUOUS)
-    val utPeakPattern: StateFlow<UtPeakPattern> = _utPeakPattern.asStateFlow()
+    // The second cue is a little softer than the main one so the two feel different.
+    private fun secondSpec() = VibeSpec(
+        _secondPattern.value, _secondCount.value,
+        (_vibeStrength.value * 0.85f).roundToInt(), _vibeSpeed.value, _vibeLength.value
+    )
 
-    private val _activeUtTier = MutableStateFlow(UtTriggerTier.IDLE)
-    val activeUtTier: StateFlow<UtTriggerTier> = _activeUtTier.asStateFlow()
-
-    // A detection whose disturbance clears threshold by this multiple counts as
-    // "strong/close" and plays the Peak pattern (and green dot) instead of the
-    // Detected pattern (yellow dot).
-    private val _strongHitMultiplier = MutableStateFlow(2.2f)
-    val strongHitMultiplier: StateFlow<Float> = _strongHitMultiplier.asStateFlow()
-
-    fun setStrongHitMultiplier(value: Float) {
-        val clamped = value.coerceIn(1.2f, 4.0f)
-        _strongHitMultiplier.value = clamped
-        preferences.strongHitMultiplier = clamped
-    }
-
-    private var activeUtTierGeneration = 0
-    private var continuousStopGeneration = 0
-
-    // Manual per-object calibration (passthrough from the sensor engine)
+    // --- Calibration (passthrough from the sensor engine) ---
     val isCalibratingObject: StateFlow<Boolean> get() = sensorEngine.isCalibratingObject
+    val calibrationPhase: StateFlow<MagneticSensorEngine.CalibrationPhase> get() = sensorEngine.calibrationPhase
+    val calibrationProgress: StateFlow<Float> get() = sensorEngine.calibrationProgress
     val objectCalibrationPeak: StateFlow<Float> get() = sensorEngine.objectCalibrationPeak
 
     private val _calibrationMessage = MutableStateFlow<String?>(null)
     val calibrationMessage: StateFlow<String?> = _calibrationMessage.asStateFlow()
 
     fun calibrateToCurrentObject() {
+        _calibrationMessage.value = null
         sensorEngine.startObjectCalibration()
+    }
+
+    fun cancelCalibration() {
+        sensorEngine.cancelObjectCalibration()
     }
 
     fun dismissCalibrationMessage() {
@@ -122,18 +122,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _currentTab = MutableStateFlow(PerformanceTab.SETTINGS)
     val currentTab: StateFlow<PerformanceTab> = _currentTab.asStateFlow()
-
-    private val _hapticType = MutableStateFlow(HapticFeedbackType.DOUBLE_STRONG)
-    val hapticType: StateFlow<HapticFeedbackType> = _hapticType.asStateFlow()
-
-    private val _vibrationStrength = MutableStateFlow(VibrationStrength.MEDIUM)
-    val vibrationStrength: StateFlow<VibrationStrength> = _vibrationStrength.asStateFlow()
-
-    private val _isStealthActive = MutableStateFlow(false)
-    val isStealthActive: StateFlow<Boolean> = _isStealthActive.asStateFlow()
-
-    private val _autoPocketStealth = MutableStateFlow(true)
-    val autoPocketStealth: StateFlow<Boolean> = _autoPocketStealth.asStateFlow()
 
     private val _volumeKeyTare = MutableStateFlow(true)
     val volumeKeyTare: StateFlow<Boolean> = _volumeKeyTare.asStateFlow()
@@ -145,69 +133,48 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         hapticEngine = DiscreetHapticEngine(application)
         preferences = GoblinPreferences(application)
 
-        // Restore persisted user settings
+        // Restore persisted settings
         sensorEngine.setTrickRunning(preferences.isTrickRunning)
         sensorEngine.setPower(preferences.isSensorPower)
-        sensorEngine.setSensitivity(preferences.sensitivity)
-        sensorEngine.setAdaptiveSensitivity(preferences.adaptiveSensitivity)
-        sensorEngine.setSmartAlarmEnabled(preferences.isSmartAlarmEnabled)
-        sensorEngine.setSmartAlarmThreshold(preferences.smartAlarmThreshold)
-        sensorEngine.setSleepingMode(preferences.isSleepingMode)
-        sensorEngine.setLocatorMode(LocatorMode.fromStored(preferences.locatorModeName))
+        sensorEngine.setTerritory(preferences.territory)
+        sensorEngine.setMagnetPower(preferences.magnetPower)
+        sensorEngine.setMagnetMovement(preferences.magnetMovement)
+        sensorEngine.setPhoneMovement(preferences.phoneMovement)
+        sensorEngine.setVerticalOnly(preferences.verticalOnly)
         sensorEngine.setCalibratedLevelPeak(preferences.calibratedLevelPeak)
 
         _isVisualModeEnabled.value = preferences.isVisualModeEnabled
         _vibrationWithVisual.value = preferences.vibrationWithVisual
-        _isUtTriggerEnabled.value = preferences.isUtTriggerEnabled
-        _strongHitMultiplier.value = preferences.strongHitMultiplier
-        _utBaselinePattern.value = preferences.utBaselinePattern
-        _utPeakPattern.value = preferences.utPeakPattern
-        _hapticType.value = try {
-            HapticFeedbackType.valueOf(preferences.hapticTypeName)
-        } catch (e: Exception) {
-            HapticFeedbackType.DOUBLE_STRONG
-        }
-        _vibrationStrength.value = try {
-            VibrationStrength.valueOf(preferences.vibrationStrengthName)
-        } catch (e: Exception) {
-            VibrationStrength.MEDIUM
-        }
-        // The flows above only drive the UI -- the haptic engine itself has to be
-        // handed the saved choices too, or it plays its defaults after every restart.
-        hapticEngine.hapticType = _hapticType.value
-        hapticEngine.strength = _vibrationStrength.value
+        _vibePattern.value = preferences.vibePattern
+        _vibeCount.value = preferences.vibeCount
+        _vibeStrength.value = preferences.vibeStrength
+        _vibeSpeed.value = preferences.vibeSpeed
+        _vibeLength.value = preferences.vibeLength
+        _secondPattern.value = preferences.secondPattern
+        _secondCount.value = preferences.secondCount
 
         readingState = sensorEngine.readingState
         creatureState = sensorEngine.creatureState
         isPoweredOn = sensorEngine.isPoweredOn
-        locatorMode = sensorEngine.locatorMode
-
         isTrickRunning = sensorEngine.isTrickRunning
-        sensitivity = sensorEngine.sensitivity
-        adaptiveSensitivity = sensorEngine.adaptiveSensitivity
-        isSmartAlarmEnabled = sensorEngine.isSmartAlarmEnabled
-        smartAlarmThreshold = sensorEngine.smartAlarmThreshold
-        isSleepingMode = sensorEngine.isSleepingMode
         liveMicroTesla = sensorEngine.liveMicroTesla
+        isSaturated = sensorEngine.isSaturated
+        territory = sensorEngine.territory
+        magnetPower = sensorEngine.magnetPower
+        magnetMovement = sensorEngine.magnetMovement
+        phoneMovement = sensorEngine.phoneMovement
+        verticalOnly = sensorEngine.verticalOnly
+        rangeSummary = sensorEngine.rangeSummary
 
-        // Listen for strike events from sensor engine
+        // Strike events from the sensor engine
         viewModelScope.launch {
             sensorEngine.strikeEvents.collectLatest { reading ->
-                // Tell the sensor to ignore its own vibration motor's interference
-                // before firing it, so the pulse can't re-trigger another "strike".
-                sensorEngine.notifyHapticPulse()
-
-                // One detector, classified once per strike: a hit that only just
-                // cleared threshold is "weak"; one that cleared it by a wide margin
-                // (a strong magnet, or the object passing very close) is "strong".
-                // Drives both the dot color and which haptic pattern plays.
-                // reading.thresholdUsed is the tolerance that was actually in force when
-                // this detection fired (including any phone-movement allowance).
                 val threshold = if (reading.thresholdUsed > 0f) reading.thresholdUsed
                 else sensorEngine.calculateEffectiveThreshold()
-                val isStrongHit = threshold > 0f && reading.deltaMagnitude >= threshold * _strongHitMultiplier.value
+                // A hit well above the trigger level is "strong/close": the dot turns green.
+                val isStrongHit = threshold > 0f && reading.deltaMagnitude >= threshold * STRONG_HIT_FACTOR
 
-                // 1. If in Screen Off Mode OR Visual Mode is enabled, light up the dot
+                // 1. Light the dot (Screen Off Mode or Visual Mode)
                 if (_isScreenOffModeActive.value || _isVisualModeEnabled.value) {
                     visualDotGeneration++
                     val myGeneration = visualDotGeneration
@@ -215,93 +182,48 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     _isVisualDotVisible.value = true
                     launch {
                         delay(2200L)
-                        // Only turn it off if no newer strike has re-lit it since
-                        if (visualDotGeneration == myGeneration) {
-                            _isVisualDotVisible.value = false
-                        }
+                        if (visualDotGeneration == myGeneration) _isVisualDotVisible.value = false
                     }
                 }
 
-                // 2. Play phone vibration if Visual Mode is disabled OR vibrationWithVisual is active
-                if (!_isVisualModeEnabled.value || _vibrationWithVisual.value) {
-                    // Any earlier continuous buzz must be fully cancelled (and its flag
-                    // reset) before a new pattern plays, otherwise a leftover "running"
-                    // flag can make the next strong hit silently do nothing.
-                    // (A new strong hit while one is still running just extends it.)
-                    if (!(isStrongHit && _utPeakPattern.value == UtPeakPattern.CONTINUOUS &&
-                            _isUtTriggerEnabled.value)) {
-                        hapticEngine.stopContinuousVibration()
-                    }
-                    // Keep the magnetometer ignoring the motor for as long as this
-                    // pattern actually vibrates, not just the default 450 ms.
-                    val isLongContinuous = isStrongHit && _isUtTriggerEnabled.value &&
-                        _utPeakPattern.value == UtPeakPattern.CONTINUOUS
-                    sensorEngine.notifyHapticPulse(
-                        when {
-                            isLongContinuous -> 1500L
-                            isStrongHit -> 700L
-                            else -> 450L
-                        }
+                // 2. Vibrate, unless the dot is the only cue
+                val spec = mainSpec()
+                if ((!_isVisualModeEnabled.value || _vibrationWithVisual.value) &&
+                    spec.pattern != VibePattern.OFF
+                ) {
+                    // The sensor must ignore the motor for as long as it runs, or the
+                    // vibration itself would read as a disturbance.
+                    sensorEngine.notifyHapticPulse(VibePlan.durationMs(spec) + HAPTIC_MARGIN_MS)
+                    hapticEngine.play(spec)
+                }
+
+                // 3. Log
+                repository.logDetectionEvent(
+                    DetectionEventEntity(
+                        timestamp = reading.timestamp,
+                        peakDelta = reading.deltaMagnitude,
+                        dominantDirection = reading.dominantDirection,
+                        fogLevel = 0f,
+                        thresholdAtEvent = threshold,
+                        durationMs = 250L
                     )
-                    if (_isUtTriggerEnabled.value) {
-                        // Flash the live badge to show which pattern just fired
-                        activeUtTierGeneration++
-                        val myTierGeneration = activeUtTierGeneration
-                        _activeUtTier.value = if (isStrongHit) UtTriggerTier.PEAK_ACTIVE else UtTriggerTier.BASELINE_ACTIVE
-                        launch {
-                            delay(1200L)
-                            if (activeUtTierGeneration == myTierGeneration) {
-                                _activeUtTier.value = UtTriggerTier.IDLE
-                            }
-                        }
-
-                        if (isStrongHit) {
-                            hapticEngine.playUtPeakPattern(_utPeakPattern.value)
-                            if (_utPeakPattern.value == UtPeakPattern.CONTINUOUS) {
-                                // Launched on viewModelScope, not inside this collectLatest
-                                // block: a newer strike cancels that block, which used to
-                                // cancel this stop timer and leave the buzz "running".
-                                continuousStopGeneration++
-                                val myStopGeneration = continuousStopGeneration
-                                viewModelScope.launch {
-                                    delay(1200L)
-                                    if (continuousStopGeneration == myStopGeneration) {
-                                        hapticEngine.stopContinuousVibration()
-                                    }
-                                }
-                            }
-                        } else {
-                            hapticEngine.playUtBaselinePattern(_utBaselinePattern.value)
-                        }
-                    } else {
-                        hapticEngine.playStrikeFeedback(reading.deltaMagnitude, reading.rateOfChange)
-                    }
-                }
-
-                // Log detection event
-                val event = DetectionEventEntity(
-                    timestamp = reading.timestamp,
-                    peakDelta = reading.deltaMagnitude,
-                    dominantDirection = reading.dominantDirection,
-                    fogLevel = 0f,
-                    thresholdAtEvent = if (reading.thresholdUsed > 0f) reading.thresholdUsed
-                    else sensorEngine.calculateEffectiveThreshold(),
-                    durationMs = 250L
                 )
-                repository.logDetectionEvent(event)
             }
         }
 
-        // Strong Magnet: the object is confirmed to be still close. Plays a softer second
-        // cue and keeps the stealth dot lit for as long as it stays close.
+        // Strong objects: the second cue says "the object is still close".
         viewModelScope.launch {
             sensorEngine.stillNearEvents.collectLatest {
-                if (!_isVisualModeEnabled.value || _vibrationWithVisual.value) {
-                    sensorEngine.notifyHapticPulse(700L)
-                    hapticEngine.playStillNearCue()
+                val spec = secondSpec()
+                if ((!_isVisualModeEnabled.value || _vibrationWithVisual.value) &&
+                    spec.pattern != VibePattern.OFF
+                ) {
+                    sensorEngine.notifyHapticPulse(VibePlan.durationMs(spec) + HAPTIC_MARGIN_MS)
+                    hapticEngine.play(spec)
                 }
             }
         }
+        // ...and the dot stays lit for as long as it stays close.
         viewModelScope.launch {
             sensorEngine.isStillNear.collectLatest { near ->
                 if (!(_isScreenOffModeActive.value || _isVisualModeEnabled.value)) return@collectLatest
@@ -311,68 +233,43 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
                     _isVisualDotStrong.value = true
                     _isVisualDotVisible.value = true
                 } else {
-                    // Leave a short tail so a quick end isn't a flicker, unless a
-                    // newer strike re-lit the dot in the meantime.
                     delay(1200L)
                     if (visualDotGeneration == myGeneration) _isVisualDotVisible.value = false
                 }
             }
         }
 
-        // Pocket proximity observation
-        viewModelScope.launch {
-            sensorEngine.isPocketCovered.collectLatest { covered ->
-                if (_autoPocketStealth.value) {
-                    if (covered && !_isStealthActive.value) {
-                        _isStealthActive.value = true
-                    } else if (!covered && _isStealthActive.value) {
-                        // Uncovered from pocket
-                        _isStealthActive.value = false
-                    }
-                }
-            }
-        }
-
-        // Smart Alarm saturation warning listener
-        viewModelScope.launch {
-            sensorEngine.smartAlarmEvents.collectLatest {
-                sensorEngine.notifyHapticPulse(700L)
-                hapticEngine.playSaturationAlarm()
-            }
-        }
-
-        // Sleeping mode wake-up confirmation listener
-        viewModelScope.launch {
-            sensorEngine.sleepWakeEvents.collectLatest {
-                sensorEngine.notifyHapticPulse(700L)
-                hapticEngine.playWakeConfirmation()
-            }
-        }
-
-        // Manual object calibration result: apply the suggested sensitivity and
-        // surface a one-line result for the Settings screen to show.
+        // Calibration result: the engine has already applied the new slider values; save
+        // them and show a short message.
         viewModelScope.launch {
             sensorEngine.calibrationEvents.collectLatest { result ->
                 if (result.success) {
-                    setSensitivity(result.suggestedSensitivity)
+                    preferences.magnetPower = result.newPower
+                    preferences.territory = result.newTerritory
+                    if (result.newPhoneMovement >= 0) preferences.phoneMovement = result.newPhoneMovement
                     preferences.calibratedLevelPeak = result.levelPeak
-                    val base = "Calibrated — peak ${"%.2f".format(result.peakDisturbance)}µT over " +
-                        "${"%.2f".format(result.noiseFloorAtCapture)}µT room noise. " +
-                        "Sensitivity set to ${result.suggestedSensitivity}."
-                    val warn = if (!result.confirmationUsable &&
-                        sensorEngine.locatorMode.value == LocatorMode.STRONG_MAGNET
-                    ) {
-                        " This object is too weak for Strong Magnet's “still near” check, " +
-                            "so it will behave like Weak Magnet. Use Weak Magnet for this object."
-                    } else ""
-                    _calibrationMessage.value = base + warn
+                    val reach = DetectionModel.radiusCm(result.newTerritory).roundToInt()
+                    val sb = StringBuilder("Calibrated. Territory set to about $reach cm")
+                    sb.append(", Magnetic Power to ${(result.newPower * 100).roundToInt()}%")
+                    if (result.newPhoneMovement >= 0) {
+                        sb.append(", Phone Movement to ${result.newPhoneMovement}%")
+                    } else {
+                        sb.append(". Phone Movement was left alone: the phone was barely moved in step 2")
+                    }
+                    sb.append(".")
+                    if (!result.reachable) {
+                        sb.append(" This object is very weak for this phone: keep it close to the phone.")
+                    }
+                    _calibrationMessage.value = sb.toString()
                 } else {
                     _calibrationMessage.value =
-                        "Didn't see a clear signal — bring the object closer during the next pass and try again."
+                        "Didn't see a clear signal. In the last 4 seconds, bring the object right up to the phone and pull it away, then try again."
                 }
             }
         }
     }
+
+    // --- Switches and sliders ---
 
     fun setTrickRunning(running: Boolean) {
         sensorEngine.setTrickRunning(running)
@@ -384,35 +281,98 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         preferences.isTrickRunning = sensorEngine.isTrickRunning.value
     }
 
-    fun setSensitivity(value: Float) {
-        sensorEngine.setSensitivity(value)
-        preferences.sensitivity = sensorEngine.sensitivity.value
+    fun setPower(on: Boolean) {
+        sensorEngine.setPower(on)
+        preferences.isSensorPower = on
     }
 
-    fun setAdaptiveSensitivity(value: Int) {
-        sensorEngine.setAdaptiveSensitivity(value)
-        preferences.adaptiveSensitivity = value
+    fun togglePower() {
+        sensorEngine.togglePower()
+        preferences.isSensorPower = sensorEngine.isPoweredOn.value
     }
 
-    fun setSmartAlarmEnabled(enabled: Boolean) {
-        sensorEngine.setSmartAlarmEnabled(enabled)
-        preferences.isSmartAlarmEnabled = enabled
+    fun setTerritory(value: Float) {
+        sensorEngine.setTerritory(value)
+        preferences.territory = sensorEngine.territory.value
     }
 
-    fun setSmartAlarmThreshold(thresh: Float) {
-        sensorEngine.setSmartAlarmThreshold(thresh)
-        preferences.smartAlarmThreshold = thresh
+    fun setMagnetPower(value: Float) {
+        sensorEngine.setMagnetPower(value)
+        preferences.magnetPower = sensorEngine.magnetPower.value
     }
 
-    fun setSleepingMode(sleeping: Boolean) {
-        sensorEngine.setSleepingMode(sleeping)
-        preferences.isSleepingMode = sleeping
+    fun setMagnetMovement(value: Float) {
+        sensorEngine.setMagnetMovement(value)
+        preferences.magnetMovement = sensorEngine.magnetMovement.value
     }
 
-    fun toggleSleepingMode() {
-        sensorEngine.toggleSleepingMode()
-        preferences.isSleepingMode = sensorEngine.isSleepingMode.value
+    fun setPhoneMovement(value: Int) {
+        sensorEngine.setPhoneMovement(value)
+        preferences.phoneMovement = sensorEngine.phoneMovement.value
     }
+
+    fun setVerticalOnly(on: Boolean) {
+        sensorEngine.setVerticalOnly(on)
+        preferences.verticalOnly = on
+    }
+
+    // --- Vibration ---
+
+    fun setVibePattern(pattern: VibePattern) {
+        _vibePattern.value = pattern
+        preferences.vibePattern = pattern
+    }
+
+    fun setVibeCount(count: Int) {
+        val v = count.coerceIn(1, 5)
+        _vibeCount.value = v
+        preferences.vibeCount = v
+    }
+
+    fun setVibeStrength(value: Int) {
+        val v = value.coerceIn(0, 100)
+        _vibeStrength.value = v
+        preferences.vibeStrength = v
+    }
+
+    fun setVibeSpeed(value: Int) {
+        val v = value.coerceIn(0, 100)
+        _vibeSpeed.value = v
+        preferences.vibeSpeed = v
+    }
+
+    fun setVibeLength(value: Int) {
+        val v = value.coerceIn(0, 100)
+        _vibeLength.value = v
+        preferences.vibeLength = v
+    }
+
+    fun setSecondPattern(pattern: VibePattern) {
+        _secondPattern.value = pattern
+        preferences.secondPattern = pattern
+    }
+
+    fun setSecondCount(count: Int) {
+        val v = count.coerceIn(1, 5)
+        _secondCount.value = v
+        preferences.secondCount = v
+    }
+
+    fun testMainVibration() {
+        playTest(mainSpec())
+    }
+
+    fun testSecondVibration() {
+        playTest(secondSpec())
+    }
+
+    private fun playTest(spec: VibeSpec) {
+        if (spec.pattern == VibePattern.OFF) return
+        sensorEngine.notifyHapticPulse(VibePlan.durationMs(spec) + HAPTIC_MARGIN_MS)
+        hapticEngine.play(spec)
+    }
+
+    // --- Display modes ---
 
     fun setScreenOffMode(active: Boolean) {
         _isScreenOffModeActive.value = active
@@ -432,26 +392,6 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         preferences.vibrationWithVisual = enabled
     }
 
-    fun setPower(on: Boolean) {
-        sensorEngine.setPower(on)
-        preferences.isSensorPower = on
-    }
-
-    fun togglePower() {
-        sensorEngine.togglePower()
-        preferences.isSensorPower = sensorEngine.isPoweredOn.value
-    }
-
-    fun setLocatorMode(mode: LocatorMode) {
-        sensorEngine.setLocatorMode(mode)
-        preferences.locatorModeName = mode.name
-    }
-
-    fun toggleLocatorMode() {
-        sensorEngine.toggleLocatorMode()
-        preferences.locatorModeName = sensorEngine.locatorMode.value.name
-    }
-
     fun setTab(tab: PerformanceTab) {
         _currentTab.value = tab
     }
@@ -460,87 +400,22 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         sensorEngine.tareBaseline()
     }
 
-    fun setHapticType(type: HapticFeedbackType) {
-        _hapticType.value = type
-        hapticEngine.hapticType = type
-        preferences.hapticTypeName = type.name
-    }
-
-    fun setVibrationStrength(strength: VibrationStrength) {
-        _vibrationStrength.value = strength
-        hapticEngine.strength = strength
-        preferences.vibrationStrengthName = strength.name
-    }
-
-    fun setStealth(active: Boolean) {
-        _isStealthActive.value = active
-    }
-
-    fun toggleStealth() {
-        _isStealthActive.value = !_isStealthActive.value
-    }
-
-    fun setAutoPocketStealth(enabled: Boolean) {
-        _autoPocketStealth.value = enabled
-    }
-
     fun setVolumeKeyTare(enabled: Boolean) {
         _volumeKeyTare.value = enabled
     }
 
-    fun testHaptic() {
-        hapticEngine.testFeedback(_hapticType.value)
-    }
-
-    // --- µT Trigger Control Methods ---
-    fun setUtTriggerEnabled(enabled: Boolean) {
-        _isUtTriggerEnabled.value = enabled
-        preferences.isUtTriggerEnabled = enabled
-        if (!enabled) {
-            hapticEngine.stopContinuousVibration()
-            _activeUtTier.value = UtTriggerTier.IDLE
-        }
-    }
-
-    fun setUtBaselinePattern(pattern: UtBaselinePattern) {
-        _utBaselinePattern.value = pattern
-        preferences.utBaselinePattern = pattern
-    }
-
-    fun setUtPeakPattern(pattern: UtPeakPattern) {
-        _utPeakPattern.value = pattern
-        preferences.utPeakPattern = pattern
-        if (_activeUtTier.value == UtTriggerTier.PEAK_ACTIVE) {
-            hapticEngine.stopContinuousVibration()
-            hapticEngine.playUtPeakPattern(pattern)
-        }
-    }
-
-    fun testUtBaselinePattern() {
-        hapticEngine.playUtBaselinePattern(_utBaselinePattern.value)
-    }
-
-    fun testUtPeakPattern() {
-        hapticEngine.playUtPeakPattern(_utPeakPattern.value)
-        if (_utPeakPattern.value == UtPeakPattern.CONTINUOUS) {
-            viewModelScope.launch {
-                delay(2000L)
-                hapticEngine.stopContinuousVibration()
-            }
-        }
-    }
-
-    fun stopTestingUt() {
-        hapticEngine.stopContinuousVibration()
-    }
-
+    /**
+     * A volume key was clicked: always clears a sensor saturation, and (when enabled)
+     * re-centres the detector. Returns true when the key press was used.
+     */
     fun onVolumeKeyTriggered(): Boolean {
+        sensorEngine.clearSaturation()
         if (_volumeKeyTare.value) {
             tareBaseline()
-            // The confirmation tick comes right after the baseline reset, so the
-            // magnetometer must ignore the motor or it reads as a disturbance.
-            sensorEngine.notifyHapticPulse(450L)
-            hapticEngine.testFeedback(HapticFeedbackType.GHOST_TAP)
+            // A short confirmation tick; the sensor must ignore its own motor.
+            val tick = VibeSpec(VibePattern.TICK, 1, _vibeStrength.value, _vibeSpeed.value, _vibeLength.value)
+            sensorEngine.notifyHapticPulse(VibePlan.durationMs(tick) + HAPTIC_MARGIN_MS)
+            hapticEngine.play(tick)
             return true
         }
         return false
@@ -548,7 +423,12 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         super.onCleared()
-        hapticEngine.stopContinuousVibration()
+        hapticEngine.cancel()
         sensorEngine.stopListening()
+    }
+
+    private companion object {
+        const val STRONG_HIT_FACTOR = 2.2f
+        const val HAPTIC_MARGIN_MS = 250L
     }
 }
