@@ -131,22 +131,25 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val reading by viewModel.readingState.collectAsStateWithLifecycle()
     val creatureState by viewModel.creatureState.collectAsStateWithLifecycle()
     val isPoweredOn by viewModel.isPoweredOn.collectAsStateWithLifecycle()
-    val locatorMode by viewModel.locatorMode.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
-    val hapticType by viewModel.hapticType.collectAsStateWithLifecycle()
-    val vibrationStrength by viewModel.vibrationStrength.collectAsStateWithLifecycle()
-    val isStealthActive by viewModel.isStealthActive.collectAsStateWithLifecycle()
-    val autoPocketStealth by viewModel.autoPocketStealth.collectAsStateWithLifecycle()
-    val volumeKeyTare by viewModel.volumeKeyTare.collectAsStateWithLifecycle()
-
-    // Settings matching screenshot
     val isTrickRunning by viewModel.isTrickRunning.collectAsStateWithLifecycle()
-    val sensitivity by viewModel.sensitivity.collectAsStateWithLifecycle()
-    val adaptiveSensitivity by viewModel.adaptiveSensitivity.collectAsStateWithLifecycle()
-    val isSmartAlarmEnabled by viewModel.isSmartAlarmEnabled.collectAsStateWithLifecycle()
-    val smartAlarmThreshold by viewModel.smartAlarmThreshold.collectAsStateWithLifecycle()
-    val isSleepingMode by viewModel.isSleepingMode.collectAsStateWithLifecycle()
     val liveMicroTesla by viewModel.liveMicroTesla.collectAsStateWithLifecycle()
+    val isSaturated by viewModel.isSaturated.collectAsStateWithLifecycle()
+
+    val territory by viewModel.territory.collectAsStateWithLifecycle()
+    val magnetPower by viewModel.magnetPower.collectAsStateWithLifecycle()
+    val magnetMovement by viewModel.magnetMovement.collectAsStateWithLifecycle()
+    val phoneMovement by viewModel.phoneMovement.collectAsStateWithLifecycle()
+    val verticalOnly by viewModel.verticalOnly.collectAsStateWithLifecycle()
+    val rangeSummary by viewModel.rangeSummary.collectAsStateWithLifecycle()
+
+    val vibePattern by viewModel.vibePattern.collectAsStateWithLifecycle()
+    val vibeCount by viewModel.vibeCount.collectAsStateWithLifecycle()
+    val vibeStrength by viewModel.vibeStrength.collectAsStateWithLifecycle()
+    val vibeSpeed by viewModel.vibeSpeed.collectAsStateWithLifecycle()
+    val vibeLength by viewModel.vibeLength.collectAsStateWithLifecycle()
+    val secondPattern by viewModel.secondPattern.collectAsStateWithLifecycle()
+    val secondCount by viewModel.secondCount.collectAsStateWithLifecycle()
 
     val isScreenOffModeActive by viewModel.isScreenOffModeActive.collectAsStateWithLifecycle()
 
@@ -168,14 +171,10 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val isVisualDotVisible by viewModel.isVisualDotVisible.collectAsStateWithLifecycle()
     val isVisualDotStrong by viewModel.isVisualDotStrong.collectAsStateWithLifecycle()
 
-    val isUtTriggerEnabled by viewModel.isUtTriggerEnabled.collectAsStateWithLifecycle()
-    val utBaselinePattern by viewModel.utBaselinePattern.collectAsStateWithLifecycle()
-    val utPeakPattern by viewModel.utPeakPattern.collectAsStateWithLifecycle()
-    val activeUtTier by viewModel.activeUtTier.collectAsStateWithLifecycle()
     val isCalibratingObject by viewModel.isCalibratingObject.collectAsStateWithLifecycle()
-    val objectCalibrationPeak by viewModel.objectCalibrationPeak.collectAsStateWithLifecycle()
+    val calibrationPhase by viewModel.calibrationPhase.collectAsStateWithLifecycle()
+    val calibrationProgress by viewModel.calibrationProgress.collectAsStateWithLifecycle()
     val calibrationMessage by viewModel.calibrationMessage.collectAsStateWithLifecycle()
-    val strongHitMultiplier by viewModel.strongHitMultiplier.collectAsStateWithLifecycle()
 
     var isSplashVisible by remember { mutableStateOf(true) }
 
@@ -249,45 +248,51 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                         ExactSettingsScreen(
                             isTrickRunning = isTrickRunning,
                             isSensorActivated = isPoweredOn,
-                            sensitivity = sensitivity,
-                            adaptiveSensitivity = adaptiveSensitivity,
-                            isSmartAlarmEnabled = isSmartAlarmEnabled,
-                            smartAlarmThreshold = smartAlarmThreshold,
-                            isSleepingMode = isSleepingMode,
+                            creatureState = creatureState,
+                            reading = reading,
                             liveMicroTesla = liveMicroTesla,
-                            isScreenOffModeActive = isScreenOffModeActive,
+                            isSaturated = isSaturated,
+                            territory = territory,
+                            magnetPower = magnetPower,
+                            magnetMovement = magnetMovement,
+                            phoneMovement = phoneMovement,
+                            verticalOnly = verticalOnly,
+                            rangeSummary = rangeSummary,
+                            vibePattern = vibePattern,
+                            vibeCount = vibeCount,
+                            vibeStrength = vibeStrength,
+                            vibeSpeed = vibeSpeed,
+                            vibeLength = vibeLength,
+                            secondPattern = secondPattern,
+                            secondCount = secondCount,
                             isVisualModeEnabled = isVisualModeEnabled,
                             vibrationWithVisual = vibrationWithVisual,
-                            isUtTriggerEnabled = isUtTriggerEnabled,
-                            utBaselinePattern = utBaselinePattern,
-                            utPeakPattern = utPeakPattern,
-                            activeUtTier = activeUtTier,
                             isCalibratingObject = isCalibratingObject,
-                            objectCalibrationPeak = objectCalibrationPeak,
+                            calibrationPhase = calibrationPhase,
+                            calibrationProgress = calibrationProgress,
                             calibrationMessage = calibrationMessage,
-                            strongHitMultiplier = strongHitMultiplier,
-                            locatorMode = locatorMode,
-                            creatureState = creatureState,
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
-                            onSensitivityChange = { viewModel.setSensitivity(it) },
-                            onAdaptiveSensitivityChange = { viewModel.setAdaptiveSensitivity(it) },
-                            onToggleSmartAlarm = { viewModel.setSmartAlarmEnabled(!isSmartAlarmEnabled) },
-                            onSmartAlarmThresholdChange = { viewModel.setSmartAlarmThreshold(it) },
-                            onToggleSleepingMode = { viewModel.toggleSleepingMode() },
+                            onTerritoryChange = { viewModel.setTerritory(it) },
+                            onMagnetPowerChange = { viewModel.setMagnetPower(it) },
+                            onMagnetMovementChange = { viewModel.setMagnetMovement(it) },
+                            onPhoneMovementChange = { viewModel.setPhoneMovement(it) },
+                            onVerticalOnlyChange = { viewModel.setVerticalOnly(it) },
+                            onVibePatternChange = { viewModel.setVibePattern(it) },
+                            onVibeCountChange = { viewModel.setVibeCount(it) },
+                            onVibeStrengthChange = { viewModel.setVibeStrength(it) },
+                            onVibeSpeedChange = { viewModel.setVibeSpeed(it) },
+                            onVibeLengthChange = { viewModel.setVibeLength(it) },
+                            onSecondPatternChange = { viewModel.setSecondPattern(it) },
+                            onSecondCountChange = { viewModel.setSecondCount(it) },
+                            onTestVibration = { viewModel.testMainVibration() },
+                            onTestSecondVibration = { viewModel.testSecondVibration() },
                             onToggleScreenOffMode = { viewModel.setScreenOffMode(it) },
                             onToggleVisualMode = { viewModel.setVisualModeEnabled(it) },
                             onToggleVibrationWithVisual = { viewModel.setVibrationWithVisual(it) },
-                            onToggleUtTrigger = { viewModel.setUtTriggerEnabled(it) },
-                            onUtBaselinePatternChange = { viewModel.setUtBaselinePattern(it) },
-                            onUtPeakPatternChange = { viewModel.setUtPeakPattern(it) },
-                            onTestUtBaselinePattern = { viewModel.testUtBaselinePattern() },
-                            onTestUtPeakPattern = { viewModel.testUtPeakPattern() },
-                            onCalibrateToObject = { viewModel.calibrateToCurrentObject() },
+                            onCalibrate = { viewModel.calibrateToCurrentObject() },
+                            onCancelCalibration = { viewModel.cancelCalibration() },
                             onDismissCalibrationMessage = { viewModel.dismissCalibrationMessage() },
-                            onStrongHitMultiplierChange = { viewModel.setStrongHitMultiplier(it) },
-                            onSelectLocatorMode = { viewModel.setLocatorMode(it) },
-                            onNavigateBack = {},
                             onOpenTutorial = { viewModel.setTab(PerformanceTab.TUTORIAL) }
                         )
                     }
