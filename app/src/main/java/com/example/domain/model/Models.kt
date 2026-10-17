@@ -4,7 +4,9 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
- * The three presets, in the order they are shown on screen.
+ * The three detection styles the detector understands internally. The app no longer shows
+ * them as presets: Magnetic Power picks the "still near" check and the Up/Down switch picks
+ * the vertical-only style.
  *
  * STRONG_MAGNET    -- a movement in the field triggers the cue, and a second
  *                     "still near" check then tells you whether the object stays close.
@@ -39,12 +41,6 @@ enum class LocatorMode(val label: String, val shortName: String, val description
     }
 }
 
-enum class RumbleMode(val label: String, val subtitle: String, val hapticType: HapticFeedbackType) {
-    FOOTSTEPS("Footsteps", "Haptic taps (quieter).", HapticFeedbackType.GHOST_TAP),
-    STOMPS("Stomps", "Heavy pulses (deep pocket).", HapticFeedbackType.DOUBLE_STRONG),
-    SILENCE("Silence", "Visual only (no vibration).", HapticFeedbackType.MUTE)
-}
-
 enum class GesturePhase(val label: String) {
     IDLE("The goblin sleeps."),
     HAND_RISING("Scent rising..."),
@@ -60,22 +56,6 @@ enum class CreatureState(val label: String, val subtitle: String) {
     STIRRING("Stirring", "Faint magnetic movement detected in the room."),
     AWAKE("Awake", "Active magnetic movement nearby."),
     STRIKING("Striking!", "Magnetic movement detected! Alerting performer.")
-}
-
-enum class HapticFeedbackType(val displayName: String, val description: String) {
-    DOUBLE_STRONG("2 Strong Pulses (Pocket)", "Two unmistakable heavy vibrations designed for deep pocket detection."),
-    GHOST_TAP("Ghost Tap", "Microscopic tactile click. Imperceptible to spectators, felt in pocket."),
-    HEARTBEAT("Creature Heartbeat", "Dual organic thud that intensifies with speed of approach."),
-    DYNAMIC_PURR("Flux Purr", "Continuous vibration scaled to instantaneous magnetic rate."),
-    SHARP_STRIKE("Sharp Strike", "Crisp, unmistakable pulse for loud venues and walk-around."),
-    GEIGER_PULSE("Geiger Ticks", "Rapid rhythmic clicks accelerating as the magnet sweeps closer."),
-    MUTE("Silent / Visual Only", "Mute all vibrations for visual practice or covert screen viewing.")
-}
-
-enum class VibrationStrength(val label: String, val multiplier: Float) {
-    SUBTLE("Subtle (Pocket / Covert)", 0.6f),
-    MEDIUM("Standard (Performer)", 1.0f),
-    PRONOUNCED("Pronounced (Heavy Fabric)", 1.5f)
 }
 
 enum class MagneticDirection(val label: String, val hint: String) {
@@ -137,24 +117,29 @@ data class MagneticReading(
         }
 }
 
-enum class UtBaselinePattern(val displayName: String, val subtitle: String) {
-    SINGLE_PULSE("1 Pulse", "Single 150ms vibration pulse"),
-    DOUBLE_PULSE("2 Pulses", "Two clear 120ms pulses"),
-    TRIPLE_PULSE("3 Pulses", "Three rhythmic 100ms pulses"),
-    HEARTBEAT("Heartbeat", "Soft organic double pulse"),
-    GHOST_TAP("Ghost Tick", "Subtle micro tactile click")
+/** How a cue feels. Used for the main detection cue and the "still near" second cue. */
+enum class VibePattern(val label: String) {
+    PULSES("Pulses"),
+    BUZZ("Buzz"),
+    STUTTER("Stutter"),
+    TICK("Tick"),
+    OFF("Off")
 }
 
-enum class UtPeakPattern(val displayName: String, val subtitle: String) {
-    CONTINUOUS("Continuous Buzz", "Keeps vibrating continuously until µT drops below threshold"),
-    RAPID_STUTTER("Rapid Stutter", "Urgent repeating alarm pulses"),
-    TRIPLE_HEAVY("3 Heavy Pulses", "Three powerful confirmation vibrations"),
-    DOUBLE_STRONG("Double Heavy Strike", "Two heavy pulses for loud environments")
+// Kept only because the saved venue profiles in the database refer to them. The app's
+// vibration choices are now VibePattern plus the Vibration settings.
+enum class HapticFeedbackType(val displayName: String, val description: String) {
+    DOUBLE_STRONG("2 Strong Pulses (Pocket)", "Two unmistakable heavy vibrations designed for deep pocket detection."),
+    GHOST_TAP("Ghost Tap", "Microscopic tactile click. Imperceptible to spectators, felt in pocket."),
+    HEARTBEAT("Creature Heartbeat", "Dual organic thud that intensifies with speed of approach."),
+    DYNAMIC_PURR("Flux Purr", "Continuous vibration scaled to instantaneous magnetic rate."),
+    SHARP_STRIKE("Sharp Strike", "Crisp, unmistakable pulse for loud venues and walk-around."),
+    GEIGER_PULSE("Geiger Ticks", "Rapid rhythmic clicks accelerating as the magnet sweeps closer."),
+    MUTE("Silent / Visual Only", "Mute all vibrations for visual practice or covert screen viewing.")
 }
 
-enum class UtTriggerTier {
-    IDLE,
-    BASELINE_ACTIVE,
-    PEAK_ACTIVE
+enum class VibrationStrength(val label: String, val multiplier: Float) {
+    SUBTLE("Subtle (Pocket / Covert)", 0.6f),
+    MEDIUM("Standard (Performer)", 1.0f),
+    PRONOUNCED("Pronounced (Heavy Fabric)", 1.5f)
 }
-
