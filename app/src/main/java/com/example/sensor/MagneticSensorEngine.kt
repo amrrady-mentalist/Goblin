@@ -12,7 +12,6 @@ import android.os.SystemClock
 import android.util.Log
 import com.example.domain.model.CreatureState
 import com.example.domain.model.GesturePhase
-import com.example.domain.model.LocatorMode
 import com.example.domain.model.MagneticReading
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -85,77 +85,76 @@ class MagneticSensorEngine(
         setTrickRunning(!_isTrickRunning.value)
     }
 
-    // Sensitivity (default 1.9, step 0.1, range 0.5 to 10.0): how small a change in the
-    // field counts as a detection when the phone is still.
-    private val _sensitivity = MutableStateFlow(1.9f)
-    val sensitivity: StateFlow<Float> = _sensitivity.asStateFlow()
+    // ---- The four plain-language sliders (all 0..1 except Phone Movement 0..100) ----
+    // Territory: how far from the phone to listen. Defaults to the maximum; calibration
+    // lowers it to the farthest distance that still works for the object and the phone.
+    private val _territory = MutableStateFlow(1f)
+    val territory: StateFlow<Float> = _territory.asStateFlow()
 
-    fun setSensitivity(value: Float) {
-        val v = ((value * 10f).toInt() / 10f).coerceIn(0.5f, 10f)
-        _sensitivity.value = v
-        detector.sensitivity = v
+    // Magnetic Power: how strong the object is (earbud .. strong neodymium).
+    private val _magnetPower = MutableStateFlow(0.5f)
+    val magnetPower: StateFlow<Float> = _magnetPower.asStateFlow()
+
+    // Magnet Movement: how big a movement of the object counts (a shiver .. a swing).
+    private val _magnetMovement = MutableStateFlow(0.5f)
+    val magnetMovement: StateFlow<Float> = _magnetMovement.asStateFlow()
+
+    // Phone Movement: how much movement of the phone itself is forgiven (strict .. relaxed).
+    private val _phoneMovement = MutableStateFlow(50)
+    val phoneMovement: StateFlow<Int> = _phoneMovement.asStateFlow()
+
+    // Up/Down switch: only count a change that is mainly vertical. Never touched by calibration.
+    private val _verticalOnly = MutableStateFlow(false)
+    val verticalOnly: StateFlow<Boolean> = _verticalOnly.asStateFlow()
+
+    // One line describing what the sliders add up to ("Catches a 15 cm movement out to ...").
+    private val _rangeSummary = MutableStateFlow("")
+    val rangeSummary: StateFlow<String> = _rangeSummary.asStateFlow()
+
+    fun setTerritory(value: Float) { _territory.value = value.coerceIn(0f, 1f); applyModel() }
+    fun setMagnetPower(value: Float) { _magnetPower.value = value.coerceIn(0f, 1f); applyModel() }
+    fun setMagnetMovement(value: Float) { _magnetMovement.value = value.coerceIn(0f, 1f); applyModel() }
+    fun setPhoneMovement(value: Int) { _phoneMovement.value = value.coerceIn(0, 100); applyModel() }
+    fun setVerticalOnly(on: Boolean) { _verticalOnly.value = on; applyModel() }
+
+    /** Hands the current slider values to the detector. Cheap; safe from any thread. */
+    private fun applyModel() {
+        val noise = max(detector.noiseFloor, calibratedNoise)
+        val t = _territory.value
+        val p = _magnetPower.value
+        val m = _magnetMovement.value
+        detector.baseThresholdUt = DetectionModel.threshold(t, p, m, noise)
+        detector.adaptiveSensitivity = DetectionModel.adaptiveFromPhoneMovement(_phoneMovement.value)
+        detector.stillNearCheck = DetectionModel.usesStillNearCheck(p)
+        detector.verticalOnly = _verticalOnly.value
+        _rangeSummary.value = DetectionModel.summary(t, p, m, noise)
     }
 
-    // Adaptive Sensitivity (default 8, range 1 to 20): how much phone movement is
-    // forgiven. Higher = the detector stays sharper while the phone moves (more
-    // sensitive, more risk of a false alarm); lower = it forgives more movement.
-    private val _adaptiveSensitivity = MutableStateFlow(8)
-    val adaptiveSensitivity: StateFlow<Int> = _adaptiveSensitivity.asStateFlow()
-
-    fun setAdaptiveSensitivity(value: Int) {
-        val v = value.coerceIn(1, 20)
-        _adaptiveSensitivity.value = v
-        detector.adaptiveSensitivity = v
-    }
-
-    // Smart Alarm (Saturation / dead sensor warning, default enabled, threshold 150 uT)
-    private val _isSmartAlarmEnabled = MutableStateFlow(true)
-    val isSmartAlarmEnabled: StateFlow<Boolean> = _isSmartAlarmEnabled.asStateFlow()
-
-    private val _smartAlarmThreshold = MutableStateFlow(150f)
-    val smartAlarmThreshold: StateFlow<Float> = _smartAlarmThreshold.asStateFlow()
-
-    fun setSmartAlarmEnabled(enabled: Boolean) {
-        _isSmartAlarmEnabled.value = enabled
-    }
-
-    fun setSmartAlarmThreshold(thresh: Float) {
-        _smartAlarmThreshold.value = thresh.coerceIn(50f, 600f)
-    }
-
-    // Sleeping Mode (Covert magnet wakeup)
-    private val _isSleepingMode = MutableStateFlow(false)
-    val isSleepingMode: StateFlow<Boolean> = _isSleepingMode.asStateFlow()
-
-    fun setSleepingMode(sleeping: Boolean) {
-        _isSleepingMode.value = sleeping
-    }
-
-    fun toggleSleepingMode() {
-        _isSleepingMode.value = !_isSleepingMode.value
-    }
+    // Noise measured in the still phase of the last calibration (0 = none yet).
+    @Volatile private var calibratedNoise = 0f
 
     // Live MicroTesla readout (e.g. 32 uT)
     private val _liveMicroTesla = MutableStateFlow(32)
     val liveMicroTesla: StateFlow<Int> = _liveMicroTesla.asStateFlow()
 
-    // Event flows for Smart Alarm & Sleeping Wake
-    private val _smartAlarmEvents = MutableSharedFlow<Float>(
-        replay = 0,
-        extraBufferCapacity = 4,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    val smartAlarmEvents: SharedFlow<Float> = _smartAlarmEvents.asSharedFlow()
+    // Sensor saturation: a magnet pressed against the phone can drive the magnetometer past
+    // its range and leave it unreliable. Detection pauses until it is cleared by a click of
+    // a volume key or by any movement of the phone.
+    private val _isSaturated = MutableStateFlow(false)
+    val isSaturated: StateFlow<Boolean> = _isSaturated.asStateFlow()
 
-    private val _sleepWakeEvents = MutableSharedFlow<Unit>(
-        replay = 0,
-        extraBufferCapacity = 4,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    val sleepWakeEvents: SharedFlow<Unit> = _sleepWakeEvents.asSharedFlow()
+    private val saturationUt: Float =
+        ((magnetometer?.maximumRange ?: 0f).takeIf { it > 0f }?.times(0.9f) ?: 1800f).coerceAtLeast(200f)
 
-    private var lastSmartAlarmTimeMs = 0L
-    private var zeroSinceMs = 0L
+    fun clearSaturation() {
+        if (!_isSaturated.value) return
+        runOnSensorThread {
+            _isSaturated.value = false
+            detector.startAttunement()
+            _isStillNear.value = false
+            _creatureState.value = CreatureState.CALIBRATING
+        }
+    }
 
     // Current State Flow
     private val _readingState = MutableStateFlow(MagneticReading())
@@ -189,20 +188,6 @@ class MagneticSensorEngine(
     private val _isPocketCovered = MutableStateFlow(false)
     val isPocketCovered: StateFlow<Boolean> = _isPocketCovered.asStateFlow()
 
-    // Detection preset
-    private val _locatorMode = MutableStateFlow(LocatorMode.WEAK_MAGNET)
-    val locatorMode: StateFlow<LocatorMode> = _locatorMode.asStateFlow()
-
-    fun setLocatorMode(mode: LocatorMode) {
-        _locatorMode.value = mode
-        detector.mode = mode
-    }
-
-    fun toggleLocatorMode() {
-        val all = LocatorMode.values()
-        setLocatorMode(all[(_locatorMode.value.ordinal + 1) % all.size])
-    }
-
     /** The stored level shift of the calibrated object (0 = never calibrated). */
     fun setCalibratedLevelPeak(value: Float) {
         detector.calibratedLevelPeak = value.coerceAtLeast(0f)
@@ -228,10 +213,22 @@ class MagneticSensorEngine(
 
     private var lastUiEmitTimeMs = 0L
 
-    // Manual object calibration: capture the peak disturbance (and how far the field LEVEL
-    // moves) from a short, deliberate pass of the actual object being used tonight.
+    // Calibration: 10 seconds in three steps, with the screen telling the performer what to do.
+    //   1. HOLD_STILL  (0-3 s)  phone still, object away     -> measures the room's noise
+    //   2. MOVE_PHONE  (3-6 s)  phone moved gently, no object -> sets Phone Movement
+    //   3. MOVE_OBJECT (6-10 s) object brought right up to the phone, then pulled away
+    //                                                         -> sets Magnetic Power, then Territory
+    // Up/Down and Magnet Movement are never changed by it.
+    enum class CalibrationPhase { IDLE, HOLD_STILL, MOVE_PHONE, MOVE_OBJECT }
+
     private val _isCalibratingObject = MutableStateFlow(false)
     val isCalibratingObject: StateFlow<Boolean> = _isCalibratingObject.asStateFlow()
+
+    private val _calibrationPhase = MutableStateFlow(CalibrationPhase.IDLE)
+    val calibrationPhase: StateFlow<CalibrationPhase> = _calibrationPhase.asStateFlow()
+
+    private val _calibrationProgress = MutableStateFlow(0f)
+    val calibrationProgress: StateFlow<Float> = _calibrationProgress.asStateFlow()
 
     private val _objectCalibrationPeak = MutableStateFlow(0f)
     val objectCalibrationPeak: StateFlow<Float> = _objectCalibrationPeak.asStateFlow()
@@ -240,11 +237,15 @@ class MagneticSensorEngine(
         val success: Boolean,
         val peakDisturbance: Float,
         val noiseFloorAtCapture: Float,
-        val suggestedSensitivity: Float,
-        /** How far the field level moved at its most (µT). Drives the Strong Magnet check. */
+        /** How far the field level moved at its most (µT) during the object pass. */
         val levelPeak: Float = 0f,
-        /** False when this object is too weak for Strong Magnet's "still near" check. */
-        val confirmationUsable: Boolean = true
+        /** False when the object is too weak for the "still near" check. */
+        val confirmationUsable: Boolean = true,
+        val newPower: Float = 0f,
+        val newTerritory: Float = 1f,
+        /** The new Phone Movement value, or -1 if the phone was not moved enough to measure it. */
+        val newPhoneMovement: Int = -1,
+        val reachable: Boolean = true
     )
     private val _calibrationEvents = MutableSharedFlow<ObjectCalibrationResult>(
         replay = 0,
@@ -253,57 +254,132 @@ class MagneticSensorEngine(
     )
     val calibrationEvents: SharedFlow<ObjectCalibrationResult> = _calibrationEvents.asSharedFlow()
 
-    private var calibCaptureEndTimeMs = 0L
-    private var calibCapturedPeak = 0f
+    private var calibStartMs = 0L
+    private var calibStillMax = 0f
+    private var calibMoveMax = 0f
+    private var calibMoveAllowance = 0f
+    private var calibObjectPeak = 0f
+    private var calibObjectPhaseStarted = false
 
-    /**
-     * Starts a short capture window. Caller should be moving the real object through
-     * the intended detection range for the full [durationMs] while this runs.
-     */
-    fun startObjectCalibration(durationMs: Long = 3000L) {
+    fun startObjectCalibration(durationMs: Long = CALIBRATION_MS) {
         runOnSensorThread {
-            calibCaptureEndTimeMs = SystemClock.elapsedRealtime() + durationMs
-            calibCapturedPeak = 0f
-            detector.beginLevelCapture()
+            calibDurationMs = durationMs
+            calibStartMs = SystemClock.elapsedRealtime()
+            calibStillMax = 0f
+            calibMoveMax = 0f
+            calibMoveAllowance = 0f
+            calibObjectPeak = 0f
+            calibObjectPhaseStarted = false
             _objectCalibrationPeak.value = 0f
+            _calibrationProgress.value = 0f
+            _calibrationPhase.value = CalibrationPhase.HOLD_STILL
             _isCalibratingObject.value = true
         }
     }
 
+    private var calibDurationMs = CALIBRATION_MS
+
+    fun cancelObjectCalibration() {
+        runOnSensorThread {
+            if (_isCalibratingObject.value) {
+                detector.endLevelCapture()
+                _isCalibratingObject.value = false
+                _calibrationPhase.value = CalibrationPhase.IDLE
+            }
+        }
+    }
+
+    /** Called with every step while calibrating. */
+    private fun calibrationStep(step: FieldDetector.Step, nowMs: Long) {
+        val elapsed = nowMs - calibStartMs
+        val fraction = (elapsed.toFloat() / calibDurationMs).coerceIn(0f, 1f)
+        _calibrationProgress.value = fraction
+        val phase = when {
+            fraction < 0.3f -> CalibrationPhase.HOLD_STILL
+            fraction < 0.6f -> CalibrationPhase.MOVE_PHONE
+            else -> CalibrationPhase.MOVE_OBJECT
+        }
+        _calibrationPhase.value = phase
+        when (phase) {
+            CalibrationPhase.HOLD_STILL -> calibStillMax = max(calibStillMax, step.disturbance)
+            CalibrationPhase.MOVE_PHONE -> {
+                calibMoveMax = max(calibMoveMax, step.disturbance)
+                calibMoveAllowance = max(calibMoveAllowance, step.motionAllowance)
+            }
+            CalibrationPhase.MOVE_OBJECT -> {
+                if (!calibObjectPhaseStarted) {
+                    calibObjectPhaseStarted = true
+                    detector.beginLevelCapture()
+                }
+                if (step.disturbance > calibObjectPeak) {
+                    calibObjectPeak = step.disturbance
+                    _objectCalibrationPeak.value = calibObjectPeak
+                }
+            }
+            CalibrationPhase.IDLE -> Unit
+        }
+        if (elapsed >= calibDurationMs) finishObjectCalibration()
+    }
+
     private fun finishObjectCalibration() {
+        val levelPeak = if (calibObjectPhaseStarted) detector.endLevelCapture() else 0f
         _isCalibratingObject.value = false
-        val peak = calibCapturedPeak
-        val levelPeak = detector.endLevelCapture()
-        val noise = detector.noiseFloor
-        // A real object pass should stand well clear of the room's own noise.
-        val success = peak > max(noise * 1.6f, 0.3f)
-        val suggested = if (success) {
-            // Threshold roughly between the room noise and the object's peak.
-            val targetThreshold = max(noise * 1.8f, peak * 0.45f)
-            ((3.8f / targetThreshold).coerceIn(0.5f, 10.0f) * 10f).toInt() / 10f
-        } else {
-            _sensitivity.value
+        _calibrationPhase.value = CalibrationPhase.IDLE
+
+        val noise = max(detector.noiseFloor, calibStillMax / 2f)
+        val peak = calibObjectPeak
+        // A real pass should stand well clear of the room's own noise.
+        val success = peak > max(noise * 1.6f, 0.3f) && levelPeak > 0f
+
+        var newPower = _magnetPower.value
+        var newTerritory = _territory.value
+        var newPhone = -1
+        var reachable = true
+        var usable = true
+        if (success) {
+            calibratedNoise = noise
+            detector.calibratedLevelPeak = levelPeak
+            usable = levelPeak >= FieldDetector.USABLE_LEVEL_PEAK
+            newPower = DetectionModel.powerFromCalibration(levelPeak)
+            newTerritory = DetectionModel.maxReliableTerritory(newPower, _magnetMovement.value, noise)
+            reachable = DetectionModel.isReachable(newTerritory, newPower, _magnetMovement.value, noise)
+
+            // Phone Movement: choose how much movement to forgive so the movement seen in
+            // step 2 (no object present) would NOT have triggered, with a 15% margin.
+            if (calibMoveAllowance >= MIN_MEASURABLE_ALLOWANCE) {
+                val base = DetectionModel.threshold(newTerritory, newPower, _magnetMovement.value, noise)
+                val scale = ((1.15f * calibMoveMax - base) / calibMoveAllowance).coerceIn(0.5f, 10f)
+                val adaptive = (10f / scale).coerceIn(1f, 20f)
+                // Never fully strict: a little forgiveness keeps a real object pass readable.
+                newPhone = (((20f - adaptive) / 19f) * 100f).toInt().coerceIn(MIN_AUTO_PHONE_MOVEMENT, 100)
+            }
         }
-        if (success) detector.calibratedLevelPeak = levelPeak
-        val usable = !success || levelPeak >= FieldDetector.USABLE_LEVEL_PEAK
-        externalScope.launch(Dispatchers.Default) {
-            _calibrationEvents.emit(
-                ObjectCalibrationResult(
-                    success = success,
-                    peakDisturbance = peak,
-                    noiseFloorAtCapture = noise,
-                    suggestedSensitivity = suggested,
-                    levelPeak = if (success) levelPeak else 0f,
-                    confirmationUsable = usable
-                )
-            )
+        val result = ObjectCalibrationResult(
+            success = success,
+            peakDisturbance = peak,
+            noiseFloorAtCapture = noise,
+            levelPeak = if (success) levelPeak else 0f,
+            confirmationUsable = usable,
+            newPower = newPower,
+            newTerritory = newTerritory,
+            newPhoneMovement = newPhone,
+            reachable = reachable
+        )
+        if (success) {
+            // Apply here too, so detection uses the new values immediately.
+            _magnetPower.value = newPower
+            _territory.value = newTerritory
+            if (newPhone >= 0) _phoneMovement.value = newPhone
+            applyModel()
         }
+        externalScope.launch(Dispatchers.Default) { _calibrationEvents.emit(result) }
     }
 
     // Configuration parameters
     @Volatile var debounceMs: Long = 400L
 
     init {
+        applyModel()
         startListening()
         startRoomCalibration()
     }
@@ -414,7 +490,7 @@ class MagneticSensorEngine(
 
     /** The tolerance in force right now (base threshold plus the movement allowance). */
     fun calculateEffectiveThreshold(): Float {
-        val scale = (10f / _adaptiveSensitivity.value.toFloat()).coerceIn(0.5f, 10f)
+        val scale = (10f / detector.adaptiveSensitivity.toFloat()).coerceIn(0.5f, 10f)
         return detector.baseThreshold() + detector.motionAllowance * scale
     }
 
@@ -429,11 +505,24 @@ class MagneticSensorEngine(
                 _isPocketCovered.value = dist < 2.5f || (dist < maxRange && maxRange <= 5.0f)
             }
 
-            Sensor.TYPE_ACCELEROMETER ->
-                detector.onAccelerometer(nowMs, event.values[0], event.values[1], event.values[2])
+            Sensor.TYPE_ACCELEROMETER -> {
+                val ax = event.values[0]
+                val ay = event.values[1]
+                val az = event.values[2]
+                detector.onAccelerometer(nowMs, ax, ay, az)
+                // Any real movement of the phone clears a sensor saturation.
+                if (_isSaturated.value &&
+                    abs(sqrt(ax * ax + ay * ay + az * az) - SensorManager.GRAVITY_EARTH) > CLEAR_ACCEL_MS2
+                ) clearSaturation()
+            }
 
-            Sensor.TYPE_GYROSCOPE ->
-                detector.onGyroscope(nowMs, event.values[0], event.values[1], event.values[2])
+            Sensor.TYPE_GYROSCOPE -> {
+                val gx = event.values[0]
+                val gy = event.values[1]
+                val gz = event.values[2]
+                detector.onGyroscope(nowMs, gx, gy, gz)
+                if (_isSaturated.value && sqrt(gx * gx + gy * gy + gz * gz) > CLEAR_GYRO_RADS) clearSaturation()
+            }
 
             Sensor.TYPE_GAME_ROTATION_VECTOR -> {
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
@@ -463,7 +552,16 @@ class MagneticSensorEngine(
         val rawScalar = sqrt(rawX * rawX + rawY * rawY + rawZ * rawZ)
         _liveMicroTesla.value = rawScalar.toInt()
 
-        checkSmartAlarm(rawScalar, nowMs)
+        // Saturation latch: stays on until a volume key is clicked or the phone is moved.
+        if (rawScalar >= saturationUt && !_isSaturated.value) {
+            _isSaturated.value = true
+            _isStillNear.value = false
+            _creatureState.value = CreatureState.AWAKE
+        }
+        if (_isSaturated.value) {
+            detector.markGap()
+            return
+        }
 
         // Express the field in a gravity-anchored frame when the rotation reference exists.
         val hasWorld = hasRotationSample
@@ -480,64 +578,23 @@ class MagneticSensorEngine(
             worldZ = rawZ
         }
 
-        // Sleeping mode: a strong field wakes the app. This is checked on the raw sample.
-        val sleeping = _isSleepingMode.value
-        if (sleeping && rawScalar > 80f) wakeFromSleep()
-
-        detector.allowTrigger = _isTrickRunning.value &&
-            !_isSleepingMode.value &&
-            !_isCalibratingObject.value
+        detector.allowTrigger = _isTrickRunning.value && !_isCalibratingObject.value
 
         val step = detector.onMagnetic(nowMs, rawX, rawY, rawZ, worldX, worldY, worldZ, hasWorld)
             ?: return
-        handleStep(step, rawScalar, nowMs)
+        handleStep(step, nowMs)
     }
 
-    private fun wakeFromSleep() {
-        if (!_isSleepingMode.value) return
-        _isSleepingMode.value = false
-        _isTrickRunning.value = true
-        externalScope.launch(Dispatchers.Default) { _sleepWakeEvents.emit(Unit) }
-    }
-
-    /**
-     * Smart Alarm: warns about a saturated sensor (reading far too high) or a dead one
-     * (reading stuck at zero), either of which would make the trick silently fail.
-     */
-    private fun checkSmartAlarm(rawScalar: Float, nowMs: Long) {
-        if (!_isSmartAlarmEnabled.value) return
-        var fire = rawScalar >= _smartAlarmThreshold.value
-        if (rawScalar < ZERO_READING_UT) {
-            if (zeroSinceMs == 0L) zeroSinceMs = nowMs
-            if (nowMs - zeroSinceMs >= ZERO_READING_MS) fire = true
-        } else {
-            zeroSinceMs = 0L
-        }
-        if (fire && nowMs - lastSmartAlarmTimeMs >= 2500L) {
-            lastSmartAlarmTimeMs = nowMs
-            externalScope.launch(Dispatchers.Default) { _smartAlarmEvents.emit(rawScalar) }
-        }
-    }
-
-    private fun handleStep(step: FieldDetector.Step, rawScalar: Float, nowMs: Long) {
-        // Object calibration capture.
-        if (_isCalibratingObject.value) {
-            if (step.disturbance > calibCapturedPeak) {
-                calibCapturedPeak = step.disturbance
-                _objectCalibrationPeak.value = calibCapturedPeak
-            }
-            if (nowMs >= calibCaptureEndTimeMs) finishObjectCalibration()
+    private fun handleStep(step: FieldDetector.Step, nowMs: Long) {
+        // The noise floor changes slowly; keep the trigger level in step with it.
+        if (nowMs - lastModelMs >= MODEL_REFRESH_MS) {
+            lastModelMs = nowMs
+            applyModel()
         }
 
-        // Sleeping mode: nothing else happens, apart from a very large change waking it.
-        if (_isSleepingMode.value) {
-            if (step.disturbance > 20f) wakeFromSleep()
-            emitReading(step, nowMs, force = false, isStrike = false,
-                status = "Sleeping Mode: Bring magnet close to wake", percent = 0)
-            return
-        }
+        if (_isCalibratingObject.value) calibrationStep(step, nowMs)
 
-        // Still-near bookkeeping (Strong Magnet).
+        // Still-near bookkeeping (Strong objects).
         if (step.stillNearConfirmed) {
             _isStillNear.value = true
             externalScope.launch(Dispatchers.Default) { _stillNearEvents.emit(Unit) }
@@ -550,6 +607,7 @@ class MagneticSensorEngine(
         val movingNow = step.motionAllowance > MOVING_DISPLAY_UT
 
         val status = when {
+            _isCalibratingObject.value -> "Calibrating…"
             !step.isAttuned -> "Attuning to room…"
             isStrike -> "Movement Detected!"
             _isStillNear.value -> "Object still close"
@@ -612,10 +670,16 @@ class MagneticSensorEngine(
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
+    private var lastModelMs = 0L
+
     private companion object {
         const val TAG = "MagneticSensorEngine"
+        const val CALIBRATION_MS = 10_000L
+        const val MODEL_REFRESH_MS = 250L
+        const val MIN_AUTO_PHONE_MOVEMENT = 15
+        const val MIN_MEASURABLE_ALLOWANCE = 0.3f      // phone must really have been moved in step 2
         const val MOVING_DISPLAY_UT = 0.5f             // allowance above this reads as "phone moving"
-        const val ZERO_READING_UT = 0.5f
-        const val ZERO_READING_MS = 1000L
+        const val CLEAR_ACCEL_MS2 = 1.2f               // movement that clears a saturation
+        const val CLEAR_GYRO_RADS = 0.6f
     }
 }
