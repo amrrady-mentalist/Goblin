@@ -1,46 +1,34 @@
 package com.example.ui.screens.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
-import com.example.domain.model.CreatureState
-import com.example.domain.model.LocatorMode
-import com.example.domain.model.UtBaselinePattern
-import com.example.domain.model.UtPeakPattern
-import com.example.domain.model.UtTriggerTier
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
@@ -55,30 +43,28 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
-import java.util.Locale
+import com.example.domain.model.CreatureState
+import com.example.domain.model.MagneticReading
+import com.example.domain.model.VibePattern
+import com.example.sensor.DetectionModel
+import com.example.sensor.MagneticSensorEngine.CalibrationPhase
+import kotlin.math.roundToInt
 
 // Frosted-glass design language: a soft gradient backdrop with a few blurred
-// color blobs behind translucent "frosted" cards. True backdrop-blur (blurring
-// whatever sits behind a card) isn't practical in plain Compose, so the glass
-// feel comes from layering semi-transparent panels over pre-blurred shapes
-// instead -- the same trick most glassmorphism UIs use under the hood.
+// color blobs behind translucent "frosted" cards.
 private val GradientTop = Color(0xFFEFE9FF)
 private val GradientBottom = Color(0xFFE3F3FF)
 private val ScreenGradient = Brush.verticalGradient(listOf(GradientTop, GradientBottom))
@@ -91,67 +77,80 @@ private val TextDescColor = Color(0xFF6B6480)
 private val YellowAccent = Color(0xFFEAB308)
 private val YellowTrack = Color(0xFFFACC15)
 private val ButtonDark = Color(0xFF1E1533)
-private val DividerColor = Color(0xFFFFFFFF).copy(alpha = 0.5f)
+private val WarnRed = Color(0xFFDC2626)
 
-// Frosted card surface: translucent white over the blurred backdrop, with a
-// soft light border to catch a glassy edge highlight.
 private val GlassCardBg = Color(0xFFFFFFFF).copy(alpha = 0.55f)
 private val GlassCardBorder = Color(0xFFFFFFFF).copy(alpha = 0.65f)
 private val GlassStroke = Color(0xFFFFFFFF).copy(alpha = 0.45f)
-private val InputBoxBg = Color(0xFFFFFFFF).copy(alpha = 0.65f)
 private val GlassMuted = Color(0xFFFFFFFF).copy(alpha = 0.40f)
+
+// Patterns offered for each cue. "Off" on the main cue means dot only; on the second cue
+// it means no second cue.
+private val PatternChoices = listOf(
+    VibePattern.PULSES, VibePattern.BUZZ, VibePattern.STUTTER, VibePattern.TICK, VibePattern.OFF
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExactSettingsScreen(
+    // Status
     isTrickRunning: Boolean,
     isSensorActivated: Boolean,
-    sensitivity: Float,
-    adaptiveSensitivity: Int,
-    isSmartAlarmEnabled: Boolean,
-    smartAlarmThreshold: Float,
-    isSleepingMode: Boolean,
+    creatureState: CreatureState,
+    reading: MagneticReading,
     liveMicroTesla: Int,
-    creatureState: CreatureState = CreatureState.SLUMBERING,
-    isScreenOffModeActive: Boolean = false,
-    isVisualModeEnabled: Boolean = false,
-    vibrationWithVisual: Boolean = true,
-    isUtTriggerEnabled: Boolean = true,
-    utBaselinePattern: UtBaselinePattern = UtBaselinePattern.SINGLE_PULSE,
-    utPeakPattern: UtPeakPattern = UtPeakPattern.CONTINUOUS,
-    activeUtTier: UtTriggerTier = UtTriggerTier.IDLE,
-    isCalibratingObject: Boolean = false,
-    objectCalibrationPeak: Float = 0f,
-    calibrationMessage: String? = null,
-    strongHitMultiplier: Float = 2.2f,
-    locatorMode: LocatorMode = LocatorMode.WEAK_MAGNET,
+    isSaturated: Boolean,
+    // The four sliders and the Up/Down switch
+    territory: Float,
+    magnetPower: Float,
+    magnetMovement: Float,
+    phoneMovement: Int,
+    verticalOnly: Boolean,
+    rangeSummary: String,
+    // Vibration
+    vibePattern: VibePattern,
+    vibeCount: Int,
+    vibeStrength: Int,
+    vibeSpeed: Int,
+    vibeLength: Int,
+    secondPattern: VibePattern,
+    secondCount: Int,
+    // Display
+    isVisualModeEnabled: Boolean,
+    vibrationWithVisual: Boolean,
+    // Calibration
+    isCalibratingObject: Boolean,
+    calibrationPhase: CalibrationPhase,
+    calibrationProgress: Float,
+    calibrationMessage: String?,
+    // Callbacks
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
-    onSensitivityChange: (Float) -> Unit,
-    onAdaptiveSensitivityChange: (Int) -> Unit,
-    onToggleSmartAlarm: () -> Unit,
-    onSmartAlarmThresholdChange: (Float) -> Unit,
-    onToggleSleepingMode: () -> Unit,
-    onToggleScreenOffMode: (Boolean) -> Unit = {},
-    onToggleVisualMode: (Boolean) -> Unit = {},
-    onToggleVibrationWithVisual: (Boolean) -> Unit = {},
-    onToggleUtTrigger: (Boolean) -> Unit = {},
-    onUtBaselinePatternChange: (UtBaselinePattern) -> Unit = {},
-    onUtPeakPatternChange: (UtPeakPattern) -> Unit = {},
-    onTestUtBaselinePattern: () -> Unit = {},
-    onTestUtPeakPattern: () -> Unit = {},
-    onCalibrateToObject: () -> Unit = {},
-    onDismissCalibrationMessage: () -> Unit = {},
-    onStrongHitMultiplierChange: (Float) -> Unit = {},
-    onSelectLocatorMode: (LocatorMode) -> Unit = {},
-    onNavigateBack: () -> Unit = {},
-    onOpenTutorial: () -> Unit = {},
+    onTerritoryChange: (Float) -> Unit,
+    onMagnetPowerChange: (Float) -> Unit,
+    onMagnetMovementChange: (Float) -> Unit,
+    onPhoneMovementChange: (Int) -> Unit,
+    onVerticalOnlyChange: (Boolean) -> Unit,
+    onVibePatternChange: (VibePattern) -> Unit,
+    onVibeCountChange: (Int) -> Unit,
+    onVibeStrengthChange: (Int) -> Unit,
+    onVibeSpeedChange: (Int) -> Unit,
+    onVibeLengthChange: (Int) -> Unit,
+    onSecondPatternChange: (VibePattern) -> Unit,
+    onSecondCountChange: (Int) -> Unit,
+    onTestVibration: () -> Unit,
+    onTestSecondVibration: () -> Unit,
+    onToggleScreenOffMode: (Boolean) -> Unit,
+    onToggleVisualMode: (Boolean) -> Unit,
+    onToggleVibrationWithVisual: (Boolean) -> Unit,
+    onCalibrate: () -> Unit,
+    onCancelCalibration: () -> Unit,
+    onDismissCalibrationMessage: () -> Unit,
+    onOpenTutorial: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
-    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(calibrationMessage) {
         val message = calibrationMessage
@@ -161,28 +160,16 @@ fun ExactSettingsScreen(
         }
     }
 
-    // Deliberately NOT re-keyed to smartAlarmThreshold: this field is the only thing
-    // that ever changes that value, so re-keying it here was resetting the field's
-    // text (and cursor position) out from under the user's own typing on every
-    // keystroke that happened to parse to a valid number -- it never felt "stable"
-    // to type into. It initializes once from the persisted value and then is left
-    // alone, matching standard "uncontrolled text field" practice.
-    // Briefly shows a "Ready" confirmation the moment room calibration finishes
-    // (and only then -- not on every later state change), so there's a clear
-    // signal of when it's safe to start, instead of the banner just vanishing.
-    var wasCalibrating by remember { mutableStateOf(true) }
+    // Briefly shows "Ready" the moment the room attunement finishes.
+    var wasAttuning by remember { mutableStateOf(true) }
     var showReadyBanner by remember { mutableStateOf(false) }
     LaunchedEffect(creatureState) {
-        if (wasCalibrating && creatureState != CreatureState.CALIBRATING) {
+        if (wasAttuning && creatureState != CreatureState.CALIBRATING) {
             showReadyBanner = true
             kotlinx.coroutines.delay(1800L)
             showReadyBanner = false
         }
-        wasCalibrating = (creatureState == CreatureState.CALIBRATING)
-    }
-
-    var smartAlarmInputText by remember {
-        mutableStateOf(smartAlarmThreshold.toInt().toString())
+        wasAttuning = (creatureState == CreatureState.CALIBRATING)
     }
 
     Box(
@@ -190,8 +177,6 @@ fun ExactSettingsScreen(
             .fillMaxSize()
             .background(ScreenGradient)
     ) {
-        // Soft blurred color blobs behind the frosted cards -- this is what reads
-        // as "glass" once the translucent card surfaces sit on top of them.
         Box(
             modifier = Modifier
                 .size(260.dp)
@@ -224,29 +209,15 @@ fun ExactSettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
         ) {
-            // Top Bar
             TopAppBar(
                 title = {
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "Settings",
-                            color = TextTitleColor,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.testTag("settings_back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = TextTitleColor
-                        )
-                    }
+                    Text(
+                        text = "Goblin",
+                        color = TextTitleColor,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
                 },
                 actions = {
                     IconButton(
@@ -263,18 +234,20 @@ fun ExactSettingsScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
 
-            HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
-
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-
-                // 0. Room-calibration status: lets the user know when the app is
-                // done reading the surrounding magnetic field and ready to go.
-                if (creatureState == CreatureState.CALIBRATING || showReadyBanner) {
+                // ---- Status ----
+                if (isSaturated) {
+                    Banner(
+                        text = "Sensor saturated. Click a volume key or move the phone to clear it.",
+                        color = WarnRed,
+                        tag = "saturation_banner"
+                    )
+                } else if (creatureState == CreatureState.CALIBRATING || showReadyBanner) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -293,7 +266,7 @@ fun ExactSettingsScreen(
                                 color = YellowAccent
                             )
                             Text(
-                                text = "Reading the surrounding magnetic field…",
+                                text = "Reading the room. Keep the phone still.",
                                 color = TextTitleColor,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
@@ -309,7 +282,7 @@ fun ExactSettingsScreen(
                                 Text(text = "✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             Text(
-                                text = "Ready — room baseline set",
+                                text = "Ready",
                                 color = TextTitleColor,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
@@ -318,776 +291,340 @@ fun ExactSettingsScreen(
                     }
                 }
 
-                // 1. Start Trick Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Start Trick",
-                        color = TextTitleColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-
-                    Button(
-                        onClick = onToggleTrick,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isTrickRunning) Color(0xFF0F172A) else ButtonDark
-                        ),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier
-                            .height(40.dp)
-                            .testTag("start_trick_button")
-                    ) {
-                        Text(
-                            text = if (isTrickRunning) "Stop" else "Start",
-                            color = if (isTrickRunning) YellowAccent else Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // 2. Activate sensor Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Activate sensor",
-                        color = TextTitleColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-
-                    Switch(
+                // ---- Controls: sensor on/off, start/stop ----
+                GlassCard {
+                    SwitchRow(
+                        title = "Sensor",
                         checked = isSensorActivated,
-                        onCheckedChange = { onToggleActivateSensor() },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = YellowAccent,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = GlassMuted
-                        ),
-                        modifier = Modifier.testTag("activate_sensor_switch")
+                        onChange = { onToggleActivateSensor() },
+                        tag = "activate_sensor_switch"
                     )
-                }
-
-                Text(
-                    text = "When this option is active the magnetic sensor is turned on\n(It must be active to start the trick)",
-                    color = TextDescColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
-
-                // 2b. Detection Mode -- this was previously only reachable through a
-                // bottom sheet with no button anywhere that actually opened it.
-                Text(
-                    text = "Detection Mode",
-                    color = TextTitleColor,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Normal
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LocatorMode.values().forEach { mode ->
-                        val isSelected = locatorMode == mode
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (isSelected) YellowAccent.copy(alpha = 0.15f) else Color.White)
-                                .border(
-                                    1.dp,
-                                    if (isSelected) YellowAccent else GlassMuted,
-                                    RoundedCornerShape(10.dp)
-                                )
-                                .clickable { onSelectLocatorMode(mode) }
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Text(
-                                    text = mode.label,
-                                    fontSize = 14.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color(0xFF8A6200) else Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = mode.description,
-                                    fontSize = 12.sp,
-                                    color = TextDescColor
-                                )
-                            }
-                        }
-                    }
-                }
-                Text(
-                    text = "Pick the preset that matches tonight's object, then run Calibrate Object once. Strong Magnet gives a second, softer cue when the object stays close. Weak Magnet reacts to any change in the field from any direction. Weak Magnet – Up/Down only reacts when the hand moves up or down and ignores sideways movement.",
-                    color = TextDescColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
-
-                // 3. Sensitivity Slider
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = String.format(Locale.US, "Sensitivity: %.1f", sensitivity),
-                        color = TextTitleColor,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-                }
-
-                Slider(
-                    value = sensitivity,
-                    onValueChange = { onSensitivityChange(it) },
-                    valueRange = 0.5f..8.0f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = YellowAccent,
-                        activeTrackColor = YellowTrack,
-                        inactiveTrackColor = GlassStroke
-                    ),
-                    modifier = Modifier.testTag("sensitivity_slider")
-                )
-
-                Text(
-                    text = "Swipe right to increase reading distance, swipe left to avoid false positives. If the phone vibrates when it is not moving and there is not a magnet close to it, then swipe left.",
-                    color = TextDescColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                // 4. Adaptative Sensitivity Slider
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Adaptative Sensitivity: $adaptiveSensitivity",
-                        color = TextTitleColor,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-                }
-
-                Slider(
-                    value = adaptiveSensitivity.toFloat(),
-                    onValueChange = { onAdaptiveSensitivityChange(it.toInt()) },
-                    valueRange = 1f..20f,
-                    steps = 18,
-                    colors = SliderDefaults.colors(
-                        thumbColor = YellowAccent,
-                        activeTrackColor = YellowTrack,
-                        inactiveTrackColor = GlassStroke
-                    ),
-                    modifier = Modifier.testTag("adaptive_sensitivity_slider")
-                )
-
-                Text(
-                    text = "Swipe right to increase reading distance, swipe left to increase freedom of movement. If the phone vibrates when it is moving and there is not a magnet close to it, then swipe left.",
-                    color = TextDescColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
-
-                // 5. Smart alarm Section
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Smart alarm",
-                        color = TextTitleColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-
-                    Switch(
-                        checked = isSmartAlarmEnabled,
-                        onCheckedChange = { onToggleSmartAlarm() },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = YellowAccent,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = GlassMuted
-                        ),
-                        modifier = Modifier.testTag("smart_alarm_switch")
-                    )
-                }
-
-                Text(
-                    text = "Value smart alarm",
-                    color = TextTitleColor,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium
-                )
-
-                OutlinedTextField(
-                    value = smartAlarmInputText,
-                    onValueChange = { text ->
-                        if (text.all { it.isDigit() } && text.length <= 4) {
-                            smartAlarmInputText = text
-                            val parsed = text.toFloatOrNull()
-                            if (parsed != null && parsed >= 40f) {
-                                onSmartAlarmThresholdChange(parsed)
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                        .testTag("smart_alarm_value_input"),
-                    textStyle = TextStyle(
-                        color = Color(0xFF0F172A),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color(0xFF0F172A),
-                        unfocusedTextColor = Color(0xFF0F172A),
-                        focusedContainerColor = InputBoxBg,
-                        unfocusedContainerColor = InputBoxBg,
-                        focusedBorderColor = YellowAccent,
-                        unfocusedBorderColor = GlassMuted,
-                        cursorColor = Color(0xFF0F172A)
-                    )
-                )
-
-                Text(
-                    text = "Activating the smart alarm triggers vibration while the app is not ready to function because the magnetic sensor exceeds the defined value or is saturated. The user must move to reset the alarm.",
-                    color = TextDescColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
-
-                // 6. Sleeping Mode Section
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Sleeping Mode",
-                        color = TextTitleColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-
-                    Switch(
-                        checked = isSleepingMode,
-                        onCheckedChange = {
-                            if (isSensorActivated) {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        "In order to change the status of 'sleeping mode', the 'activate sensor' status must be turned off first."
-                                    )
-                                }
-                            } else {
-                                onToggleSleepingMode()
-                            }
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = YellowAccent,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = GlassMuted
-                        ),
-                        modifier = Modifier.testTag("sleeping_mode_switch")
-                    )
-                }
-
-                Text(
-                    text = "When this mode is active the App will remain inactive. To activate, bring a magnet close to the phone until you feel the vibrations. In order to change the status of \"sleeping mode\", the \"activate sensor\" status must be turned off first.",
-                    color = TextDescColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
-
-                // 7. MicroTesla Value Section & Dual-Tier Vibration Triggers
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "MicroTesla Value",
-                        color = TextTitleColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-
-                    // Dot color tracks the same SLUMBERING/STIRRING/AWAKE/STRIKING
-                    // tiers the engine already derives the "Detected"/"Strong-Close"
-                    // haptic split from, rather than a separate made-up scale: green
-                    // while things are quiet, yellow for a faint reading, red once
-                    // it's strong enough to count as a real detection.
-                    val readingDotColor = when (creatureState) {
-                        CreatureState.CALIBRATING, CreatureState.DORMANT -> Color(0xFF94A3B8)
-                        CreatureState.SLUMBERING -> Color(0xFF22C55E)
-                        CreatureState.STIRRING -> Color(0xFFEAB308)
-                        CreatureState.AWAKE, CreatureState.STRIKING -> Color(0xFFDC2626)
-                    }
-
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.testTag("microtesla_value_badge")
-                    ) {
-                        Text(
-                            text = "$liveMicroTesla µT",
-                            color = TextTitleColor,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(11.dp)
-                                .clip(CircleShape)
-                                .background(readingDotColor)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // µT Threshold Control Switch
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Two-Feel Vibration",
-                            color = TextTitleColor,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = "A normal detection plays the Detected pattern; an unusually strong one plays the Strong/Close pattern instead. Calibrate below for tonight's object.",
-                            color = TextDescColor,
-                            fontSize = 13.sp,
-                            lineHeight = 17.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Switch(
-                        checked = isUtTriggerEnabled,
-                        onCheckedChange = onToggleUtTrigger,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = YellowAccent,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = GlassMuted
-                        ),
-                        modifier = Modifier.testTag("ut_trigger_switch")
-                    )
-                }
-
-                if (isUtTriggerEnabled) {
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Strong/close cutoff: how far above threshold a hit must clear
-                    // before it counts as "strong" (green dot + Strong/Close pattern)
-                    // instead of "weak" (yellow dot + Detected pattern).
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(GlassCardBg)
-                            .border(1.dp, GlassStroke, RoundedCornerShape(12.dp))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Strong/Close Cutoff",
-                                color = Color(0xFF0F172A),
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "${String.format("%.1f", strongHitMultiplier)}x",
-                                color = YellowAccent,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Text(
-                            text = "Lower = more hits read as \"strong\". Higher = only a very close or very strong object does.",
-                            color = TextDescColor,
-                            fontSize = 13.sp,
-                            lineHeight = 17.sp
-                        )
-                        Slider(
-                            value = strongHitMultiplier,
-                            onValueChange = onStrongHitMultiplierChange,
-                            valueRange = 1.2f..4.0f,
-                            steps = 27,
-                            colors = SliderDefaults.colors(
-                                thumbColor = YellowAccent,
-                                activeTrackColor = YellowAccent,
-                                inactiveTrackColor = GlassMuted
-                            ),
-                            modifier = Modifier.testTag("strong_hit_multiplier_slider")
-                        )
-                    }
-
-                    // Calibrate-to-object card: replaces fixed µT thresholds with a
-                    // short capture of whatever object is being used tonight, so the
-                    // same detector works whether it's a faint earbud magnet or a
-                    // strong fridge magnet.
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(GlassCardBg)
-                            .border(1.dp, GlassStroke, RoundedCornerShape(12.dp))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "Calibrate To Tonight's Object",
-                            color = Color(0xFF0F172A),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = if (isCalibratingObject)
-                                "Hold or pass the object through range now… peak seen: ${"%.2f".format(objectCalibrationPeak)} µT"
-                            else
-                                "Move the object you're using tonight through the real detection range, then tap Calibrate and keep moving it for 3 seconds.",
-                            color = TextDescColor,
-                            fontSize = 13.sp,
-                            lineHeight = 17.sp
-                        )
-
-                        Button(
-                            onClick = onCalibrateToObject,
-                            enabled = !isCalibratingObject,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = YellowAccent,
-                                contentColor = Color.Black,
-                                disabledContainerColor = GlassStroke
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .testTag("calibrate_object_button")
-                        ) {
-                            Text(
-                                text = if (isCalibratingObject) "Calibrating… hold object nearby" else "Calibrate (3s)",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Text(
-                            text = "Detected Pattern:",
-                            color = Color(0xFF475569),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-
-                        // Pattern Selector Chips for Baseline (wrapped 3-per-row so
-                        // longer labels like "Ghost Tick" have room to breathe)
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            UtBaselinePattern.values().toList().chunked(3).forEach { rowPatterns ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    rowPatterns.forEach { pattern ->
-                                        val isSelected = utBaselinePattern == pattern
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .heightIn(min = 44.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) YellowAccent else Color.White)
-                                                .border(
-                                                    1.dp,
-                                                    if (isSelected) YellowAccent else GlassMuted,
-                                                    RoundedCornerShape(8.dp)
-                                                )
-                                                .clickable { onUtBaselinePatternChange(pattern) }
-                                                .padding(horizontal = 6.dp, vertical = 6.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = pattern.displayName,
-                                                fontSize = 11.sp,
-                                                lineHeight = 13.sp,
-                                                textAlign = TextAlign.Center,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) Color.Black else Color(0xFF334155)
-                                            )
-                                        }
-                                    }
-                                    // Pad out the last row so its chips stay the same width as a full row
-                                    repeat(3 - rowPatterns.size) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
-                                }
-                            }
-                        }
-
-                        Button(
-                            onClick = onTestUtBaselinePattern,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = ButtonDark,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(38.dp)
-                                .testTag("test_ut_baseline_button")
-                        ) {
-                            Text(
-                                text = "Test Detected Vibration (${utBaselinePattern.displayName})",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Strong/Close hit pattern: plays automatically instead of the
-                    // Detected pattern whenever a confirmed hit clears threshold by a
-                    // wide margin (a strong magnet, or the object passing very close).
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(GlassCardBg)
-                            .border(1.dp, GlassStroke, RoundedCornerShape(12.dp))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "Strong / Close Hit Pattern",
-                            color = Color(0xFF0F172A),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Plays instead of the Detected pattern when a hit comes in unusually strong.",
-                            color = TextDescColor,
-                            fontSize = 13.sp,
-                            lineHeight = 17.sp
-                        )
-
-                        // Pattern Selector Chips for Peak (wrapped 2-per-row — these
-                        // labels, e.g. "Double Heavy Strike", are the longest in the app)
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            UtPeakPattern.values().toList().chunked(2).forEach { rowPatterns ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    rowPatterns.forEach { pattern ->
-                                        val isSelected = utPeakPattern == pattern
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .heightIn(min = 44.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) Color(0xFFDC2626) else Color.White)
-                                                .border(
-                                                    1.dp,
-                                                    if (isSelected) Color(0xFFDC2626) else GlassMuted,
-                                                    RoundedCornerShape(8.dp)
-                                                )
-                                                .clickable { onUtPeakPatternChange(pattern) }
-                                                .padding(horizontal = 6.dp, vertical = 6.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = pattern.displayName,
-                                                fontSize = 11.sp,
-                                                lineHeight = 13.sp,
-                                                textAlign = TextAlign.Center,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) Color.White else Color(0xFF334155)
-                                            )
-                                        }
-                                    }
-                                    repeat(2 - rowPatterns.size) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
-                                }
-                            }
-                        }
-
-                        Button(
-                            onClick = onTestUtPeakPattern,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFDC2626),
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(38.dp)
-                                .testTag("test_ut_peak_button")
-                        ) {
-                            Text(
-                                text = "Test Strong/Close Vibration (${utPeakPattern.displayName})",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
-
-                // 8. Screen Off Mode Section
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Screen off mode",
-                        color = TextTitleColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-
-                    Button(
-                        onClick = { onToggleScreenOffMode(true) },
-                        colors = ButtonDefaults.buttonColors(containerColor = ButtonDark),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier
-                            .height(40.dp)
-                            .testTag("enter_screen_off_mode_button")
-                    ) {
-                        Text(
-                            text = "Turn Screen Off",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                Text(
-                    text = "Turns into a pitch black screen in immersive mode so it looks like the phone is locked. The app continues detecting in the background. Swipe down with 2 fingers to get back to the app.",
-                    color = TextDescColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
-
-                // 9. Visual Mode Section
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Visual mode",
-                        color = TextTitleColor,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-
-                    Switch(
-                        checked = isVisualModeEnabled,
-                        onCheckedChange = { onToggleVisualMode(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = YellowAccent,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = GlassMuted
-                        ),
-                        modifier = Modifier.testTag("visual_mode_switch")
-                    )
-                }
-
-                Text(
-                    text = "In pitch black screen off mode, a very tiny green dot appears on the very top left corner when a magnet is detected.",
-                    color = TextDescColor,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-
-                if (isVisualModeEnabled) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Use vibrations with visual mode",
+                            text = "Trick",
                             color = TextTitleColor,
                             fontSize = 16.sp,
-                            fontWeight = FontWeight.Normal
+                            maxLines = 1,
+                            softWrap = false
                         )
-
-                        Switch(
-                            checked = vibrationWithVisual,
-                            onCheckedChange = { onToggleVibrationWithVisual(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = YellowAccent,
-                                uncheckedThumbColor = Color.White,
-                                uncheckedTrackColor = GlassMuted
-                            ),
-                            modifier = Modifier.testTag("vibration_with_visual_switch")
+                        Button(
+                            onClick = onToggleTrick,
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonDark),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .height(40.dp)
+                                .testTag("start_trick_button")
+                        ) {
+                            Text(
+                                text = if (isTrickRunning) "Stop" else "Start",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                    // Live signal strength, so slider changes can be judged at a glance.
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = reading.scentStatusText,
+                                color = TextDescColor,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "$liveMicroTesla µT",
+                                color = TextDescColor,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress = { reading.scentStrengthPercent / 100f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = YellowAccent,
+                            trackColor = GlassMuted
                         )
                     }
+                }
 
+                // ---- Detection ----
+                GlassCard(title = "Detection") {
+                    LabeledSlider(
+                        title = "Territory",
+                        valueText = "≈ ${DetectionModel.radiusCm(territory).roundToInt()} cm",
+                        leftLabel = "Close",
+                        rightLabel = "Far",
+                        value = territory,
+                        onChange = onTerritoryChange,
+                        tag = "territory_slider"
+                    )
+                    LabeledSlider(
+                        title = "Magnetic Power",
+                        valueText = "${(magnetPower * 100).roundToInt()}%",
+                        leftLabel = "Weak",
+                        rightLabel = "Strong",
+                        value = magnetPower,
+                        onChange = onMagnetPowerChange,
+                        tag = "magnet_power_slider"
+                    )
+                    LabeledSlider(
+                        title = "Phone Movement",
+                        valueText = "$phoneMovement%",
+                        leftLabel = "Strict",
+                        rightLabel = "Relaxed",
+                        value = phoneMovement / 100f,
+                        onChange = { onPhoneMovementChange((it * 100f).roundToInt()) },
+                        tag = "phone_movement_slider"
+                    )
+                    LabeledSlider(
+                        title = "Magnet Movement",
+                        valueText = "≈ ${DetectionModel.moveCm(magnetMovement).roundToInt()} cm",
+                        leftLabel = "Shiver",
+                        rightLabel = "Swing",
+                        value = magnetMovement,
+                        onChange = onMagnetMovementChange,
+                        tag = "magnet_movement_slider"
+                    )
+                    SwitchRow(
+                        title = "Up/Down only",
+                        checked = verticalOnly,
+                        onChange = onVerticalOnlyChange,
+                        tag = "up_down_switch"
+                    )
                     Text(
-                        text = if (vibrationWithVisual) "Both vibrations and green dot will alert you on detection." else "Vibrations muted: green dot only for silent detection.",
+                        text = rangeSummary,
+                        color = TextDescColor,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.testTag("range_summary")
+                    )
+                }
+
+                // ---- Calibration ----
+                GlassCard(title = "Calibration") {
+                    if (isCalibratingObject) {
+                        val (step, text) = when (calibrationPhase) {
+                            CalibrationPhase.HOLD_STILL ->
+                                "1 of 3" to "Hold the phone still. Keep the object away."
+                            CalibrationPhase.MOVE_PHONE ->
+                                "2 of 3" to "Move the phone gently, as if walking. Object still away."
+                            CalibrationPhase.MOVE_OBJECT, CalibrationPhase.IDLE ->
+                                "3 of 3" to "Bring the object right up to the phone, then pull it away."
+                        }
+                        Text(
+                            text = step,
+                            color = YellowAccent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = text,
+                            color = TextTitleColor,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 22.sp
+                        )
+                        LinearProgressIndicator(
+                            progress = { calibrationProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = YellowAccent,
+                            trackColor = GlassMuted
+                        )
+                        OutlinedButton(
+                            onClick = onCancelCalibration,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("cancel_calibration_button")
+                        ) {
+                            Text("Cancel", color = TextTitleColor, maxLines = 1)
+                        }
+                    } else {
+                        Text(
+                            text = "Takes 10 seconds and sets the sliders for you. You can still adjust any of them afterwards.",
+                            color = TextDescColor,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                        Button(
+                            onClick = onCalibrate,
+                            colors = ButtonDefaults.buttonColors(containerColor = ButtonDark),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("calibrate_button")
+                        ) {
+                            Text(
+                                text = "Calibrate",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                // ---- Vibration ----
+                GlassCard(title = "Vibration") {
+                    ChipRow(
+                        labels = PatternChoices.map { it.label },
+                        selected = PatternChoices.indexOf(vibePattern),
+                        onSelect = { onVibePatternChange(PatternChoices[it]) },
+                        tagPrefix = "vibe_pattern"
+                    )
+                    if (vibePattern == VibePattern.OFF) {
+                        Text(
+                            text = "No vibration. Only the dot shows a detection.",
+                            color = TextDescColor,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    } else {
+                        if (vibePattern != VibePattern.BUZZ) {
+                            Text(text = "Vibrations", color = TextTitleColor, fontSize = 14.sp, maxLines = 1)
+                            ChipRow(
+                                labels = listOf("1", "2", "3", "4", "5"),
+                                selected = vibeCount - 1,
+                                onSelect = { onVibeCountChange(it + 1) },
+                                tagPrefix = "vibe_count"
+                            )
+                        }
+                        LabeledSlider(
+                            title = "Strength",
+                            valueText = "$vibeStrength%",
+                            leftLabel = "Soft",
+                            rightLabel = "Hard",
+                            value = vibeStrength / 100f,
+                            onChange = { onVibeStrengthChange((it * 100f).roundToInt()) },
+                            tag = "vibe_strength_slider"
+                        )
+                        if (vibePattern != VibePattern.BUZZ && vibeCount > 1) {
+                            LabeledSlider(
+                                title = "Speed",
+                                valueText = "$vibeSpeed%",
+                                leftLabel = "Slow",
+                                rightLabel = "Fast",
+                                value = vibeSpeed / 100f,
+                                onChange = { onVibeSpeedChange((it * 100f).roundToInt()) },
+                                tag = "vibe_speed_slider"
+                            )
+                        }
+                        if (vibePattern == VibePattern.PULSES || vibePattern == VibePattern.BUZZ) {
+                            LabeledSlider(
+                                title = "Length",
+                                valueText = "$vibeLength%",
+                                leftLabel = "Short",
+                                rightLabel = "Long",
+                                value = vibeLength / 100f,
+                                onChange = { onVibeLengthChange((it * 100f).roundToInt()) },
+                                tag = "vibe_length_slider"
+                            )
+                        }
+                        TestButton(text = "Test", onClick = onTestVibration, tag = "test_vibration_button")
+                    }
+                }
+
+                // ---- Second cue ----
+                GlassCard(title = "Second cue") {
+                    Text(
+                        text = "For strong objects: plays about a second after the first cue if the object stays close.",
+                        color = TextDescColor,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    ChipRow(
+                        labels = PatternChoices.map { it.label },
+                        selected = PatternChoices.indexOf(secondPattern),
+                        onSelect = { onSecondPatternChange(PatternChoices[it]) },
+                        tagPrefix = "second_pattern"
+                    )
+                    if (secondPattern != VibePattern.OFF) {
+                        if (secondPattern != VibePattern.BUZZ) {
+                            Text(text = "Vibrations", color = TextTitleColor, fontSize = 14.sp, maxLines = 1)
+                            ChipRow(
+                                labels = listOf("1", "2", "3", "4", "5"),
+                                selected = secondCount - 1,
+                                onSelect = { onSecondCountChange(it + 1) },
+                                tagPrefix = "second_count"
+                            )
+                        }
+                        TestButton(text = "Test", onClick = onTestSecondVibration, tag = "test_second_button")
+                    }
+                }
+
+                // ---- More ----
+                GlassCard(title = "More") {
+                    SwitchRow(
+                        title = "Show dot",
+                        checked = isVisualModeEnabled,
+                        onChange = onToggleVisualMode,
+                        tag = "visual_mode_switch"
+                    )
+                    Text(
+                        text = "A tiny dot in the top-left corner lights up on a detection.",
                         color = TextDescColor,
                         fontSize = 12.sp,
                         lineHeight = 16.sp
                     )
+                    if (isVisualModeEnabled) {
+                        SwitchRow(
+                            title = "Vibrate too",
+                            checked = vibrationWithVisual,
+                            onChange = onToggleVibrationWithVisual,
+                            tag = "vibration_with_visual_switch"
+                        )
+                    }
                 }
 
-                HorizontalDivider(color = GlassStroke, thickness = 0.8.dp)
+                // ---- Screen Off Mode: last, once everything is set ----
+                Button(
+                    onClick = { onToggleScreenOffMode(true) },
+                    colors = ButtonDefaults.buttonColors(containerColor = ButtonDark),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("enter_screen_off_mode_button")
+                ) {
+                    Text(
+                        text = "Turn Screen Off",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    text = "Turns the screen pitch black so it looks locked. Detection keeps running. Swipe down with 2 fingers to come back.",
+                    color = TextDescColor,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -1097,5 +634,201 @@ fun ExactSettingsScreen(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
+    }
+}
+
+// ------------------------------------------------------------------------------------
+// Small building blocks. Every label is single-line so nothing wraps one word per line.
+// ------------------------------------------------------------------------------------
+
+@Composable
+private fun GlassCard(
+    title: String? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(GlassCardBg)
+            .border(1.dp, GlassCardBorder, RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (title != null) {
+            Text(
+                text = title,
+                color = TextTitleColor,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+        }
+        content()
+    }
+}
+
+@Composable
+private fun Banner(text: String, color: Color, tag: String) {
+    Text(
+        text = text,
+        color = Color.White,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
+        lineHeight = 19.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(color)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .testTag(tag)
+    )
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    tag: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = TextTitleColor,
+            fontSize = 16.sp,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = YellowAccent,
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = GlassMuted
+            ),
+            modifier = Modifier.testTag(tag)
+        )
+    }
+}
+
+/** Title on the left, value on the right, slider, and a short word at each end. */
+@Composable
+private fun LabeledSlider(
+    title: String,
+    valueText: String,
+    leftLabel: String,
+    rightLabel: String,
+    value: Float,
+    onChange: (Float) -> Unit,
+    tag: String
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                color = TextTitleColor,
+                fontSize = 16.sp,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = valueText,
+                color = TextDescColor,
+                fontSize = 14.sp,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+        Slider(
+            value = value.coerceIn(0f, 1f),
+            onValueChange = onChange,
+            valueRange = 0f..1f,
+            colors = SliderDefaults.colors(
+                thumbColor = YellowAccent,
+                activeTrackColor = YellowTrack,
+                inactiveTrackColor = GlassStroke
+            ),
+            modifier = Modifier.testTag(tag)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = leftLabel, color = TextDescColor, fontSize = 12.sp, maxLines = 1, softWrap = false)
+            Text(text = rightLabel, color = TextDescColor, fontSize = 12.sp, maxLines = 1, softWrap = false)
+        }
+    }
+}
+
+/** A row of equal-width choices; the selected one is highlighted. */
+@Composable
+private fun ChipRow(
+    labels: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    tagPrefix: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        labels.forEachIndexed { index, label ->
+            val isSelected = index == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isSelected) YellowAccent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.6f))
+                    .border(
+                        1.dp,
+                        if (isSelected) YellowAccent else GlassMuted,
+                        RoundedCornerShape(10.dp)
+                    )
+                    .clickable { onSelect(index) }
+                    .testTag("${tagPrefix}_$index"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSelected) Color(0xFF8A6200) else TextTitleColor,
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TestButton(text: String, onClick: () -> Unit, tag: String) {
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .testTag(tag)
+    ) {
+        Text(text, color = TextTitleColor, maxLines = 1)
     }
 }
