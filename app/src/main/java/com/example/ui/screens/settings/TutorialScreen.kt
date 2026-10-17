@@ -158,56 +158,56 @@ fun TutorialScreen(
 
                 TutorialStepItem(
                     icon = Icons.Default.Sensors,
-                    title = "1. Activate Sensor & Start Trick",
-                    body = "\"Activate sensor\" turns the magnetometer on. The app immediately spends about a second reading the room's own magnetic field \u2014 you'll see a \"Reading the surrounding magnetic field\u2026\" banner, followed by a brief \"Ready\" confirmation once it's done. \"Start Trick\" arms detection once you're ready to perform."
+                    title = "1. Sensor & Trick",
+                    body = "\"Sensor\" turns the magnetometer on. The app spends about a second reading the room, with the phone kept still, and then shows \"Ready\". \"Trick\" arms detection once you are ready to perform."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.Tune,
-                    title = "2. Detection Mode",
-                    body = "Pick the preset that matches your object. Strong Magnet (watch charger, fridge magnet): any change in the field triggers the cue, then a second, softer double-pulse tells you the object is STILL close \u2014 if it only passed by, you get no second cue. Weak Magnet (earbud): any change in the field triggers the cue, from any direction. Weak Magnet \u2013 Up/Down: same, but only when the hand moves up or down; sideways movement is ignored. Strong Magnet needs the object to move the field by roughly 2 \u00b5T or more when calibrated; if yours doesn't, the calibration message will tell you to use Weak Magnet instead."
+                    title = "2. Calibrate first",
+                    body = "Tap Calibrate and follow the screen for 10 seconds. Step 1: hold the phone still with the object away. Step 2: move the phone gently, as if walking, with the object still away. Step 3: bring the object right up to the phone, then pull it away. The app then sets Territory, Magnetic Power and Phone Movement for you. You can adjust any slider by hand afterwards."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.Speed,
-                    title = "3. Sensitivity",
-                    body = "Sensitivity sets how large a magnetic ripple has to be to count as a detection while the phone is resting. Calibrate To Object below sets it automatically \u2014 you shouldn't usually need to hand-tune it unless you want to nudge the result afterward. Phone movement no longer switches detection off: instead the app measures how much the phone is moving or turning and temporarily asks for a bigger change before it reacts, then relaxes again over about a second and a half once the phone is still. Adaptive Sensitivity controls how much movement is forgiven \u2014 raise it to stay sharper while moving, lower it if the phone buzzes when you move it."
+                    title = "3. The four sliders",
+                    body = "Territory: how far from the phone to listen, from close to far. Magnetic Power: how strong the object is, from an earbud to a strong neodymium magnet. Magnet Movement: how big a movement of the object should count, from a small shiver of the hand to a big swing. Phone Movement: how much movement of the phone itself is forgiven. Strict means the phone must be still; Relaxed means walking is fine. The line under the sliders tells you what they add up to."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.CheckCircle,
-                    title = "4. Calibrate To Tonight's Object",
-                    body = "Different objects need different settings \u2014 a hidden earbud magnet is far weaker than a fridge magnet or a watch charger at the same distance. Before each performance, move tonight's actual object through the real distance and angle you'll use live, tap Calibrate, and keep moving it for the full 3 seconds. Always calibrate at your FARTHEST expected distance, not your closest \u2014 a detector tuned for the hard case still catches the easy case; tuned the other way round, it can miss the hard case entirely."
+                    title = "4. Up/Down only",
+                    body = "Turn this on if the object always moves straight up or down, like a hand rising and falling. Sideways movement is then ignored. Calibration never changes this switch."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.Vibration,
-                    title = "5. Two-Feel Vibration",
-                    body = "A normal detection plays the \"Detected\" pattern. One that clears threshold by a wide margin \u2014 a strong magnet, or the object passing very close \u2014 automatically plays \"Strong/Close\" instead. The Strong/Close Cutoff slider controls how big that margin needs to be. The live reading dot follows the same idea: green while quiet, yellow for a faint reading, red once it's strong."
+                    title = "5. Vibration",
+                    body = "Choose Pulses, Buzz, Stutter, Tick, or Off (dot only). Pick how many vibrations (1 to 5), how hard, how fast and how long, and use Test to feel it. In a pocket, choose Hard strength and 2 or 3 pulses."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.Alarm,
-                    title = "6. Smart Alarm",
-                    body = "An independent safety warning, separate from normal detection: if the raw field ever gets unusually strong (for example, standing right next to a speaker or large motor), the phone gives a distinct alert so you know a reading might not be trustworthy. Type a threshold directly into the box in \u00b5T."
+                    title = "6. Second cue",
+                    body = "Strong objects only. When the object is strong enough, the app checks about a second after the first cue whether it is STILL close, and plays the second cue if it is. If the object only passed by, you get no second cue. Choose its pattern and count separately, or turn it Off."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.Bedtime,
-                    title = "7. Sleeping Mode",
-                    body = "Sleeping Mode can only be changed while \"Activate sensor\" is off. Turn the sensor off, switch Sleeping Mode on, then turn \"Activate sensor\" back on and pocket the phone \u2014 it stays quiet. To covertly arm the trick mid-routine, bring your magnetic prop close to your pocket; the phone wakes itself and confirms with a distinct buzz. If the sensor is left off, the wake-up can never happen."
+                    title = "7. Saturated sensor",
+                    body = "If a magnet is pressed right against the phone, the sensor can overload. The app then pauses detection and shows a red message. Click either volume key, or just move the phone, to clear it."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.CheckCircle,
-                    title = "8. Screen Off Mode & Visual Dot",
-                    body = "Screen Off Mode turns the display pitch black and locks it into an immersive, locked-looking state while detection keeps running underneath. Swipe down with two fingers anywhere on the black screen to return to the app. Visual Mode adds a small, deliberately faint dot in the top-left corner on a hit \u2014 colored the same green/yellow/red as the live reading \u2014 for cueing yourself without relying on vibration alone."
+                    title = "8. Screen Off & the dot",
+                    body = "\"Turn Screen Off\" at the bottom makes the screen pitch black while detection keeps running. Swipe down with two fingers to come back. \"Show dot\" lights a tiny dot in the top-left corner on a detection: green for a strong hit, yellow for a weak one, and it stays on while a strong object stays close."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.VolumeUp,
-                    title = "9. Volume Key Baseline Tare (no switch \u2014 always on)",
-                    body = "Press either volume button at any time, even with the phone in your pocket, to silently re-center the baseline right where you are. There's a quiet confirmation tick so you know it registered. Handy if you feel the baseline may have drifted mid-set and want a discreet reset without pulling the phone out."
+                    title = "9. Volume keys",
+                    body = "Click either volume key at any time, even in your pocket, to re-centre the detector right where you are. A short tick confirms it. This also clears a saturated sensor."
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
