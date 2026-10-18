@@ -85,49 +85,38 @@ class MagneticSensorEngine(
         setTrickRunning(!_isTrickRunning.value)
     }
 
-    // ---- The four plain-language sliders (all 0..1 except Phone Movement 0..100) ----
-    // Territory: how far from the phone to listen. Defaults to the maximum; calibration
-    // lowers it to the farthest distance that still works for the object and the phone.
-    private val _territory = MutableStateFlow(1f)
-    val territory: StateFlow<Float> = _territory.asStateFlow()
-
-    // Magnetic Power: how strong the object is (earbud .. strong neodymium).
-    private val _magnetPower = MutableStateFlow(0.5f)
-    val magnetPower: StateFlow<Float> = _magnetPower.asStateFlow()
-
-    // Magnet Movement: how big a movement of the object counts (a shiver .. a swing).
-    private val _magnetMovement = MutableStateFlow(0.5f)
-    val magnetMovement: StateFlow<Float> = _magnetMovement.asStateFlow()
+    // ---- The two plain-language sliders ----
+    // Sensitivity: how small a change counts (0 = only big changes .. 1 = the most the phone
+    // can trust). Calibration sets it from the real object.
+    private val _sensitivity = MutableStateFlow(0.5f)
+    val sensitivity: StateFlow<Float> = _sensitivity.asStateFlow()
 
     // Phone Movement: how much movement of the phone itself is forgiven (strict .. relaxed).
     private val _phoneMovement = MutableStateFlow(50)
     val phoneMovement: StateFlow<Int> = _phoneMovement.asStateFlow()
 
-    // Up/Down switch: only count a change that is mainly vertical. Never touched by calibration.
-    private val _verticalOnly = MutableStateFlow(false)
-    val verticalOnly: StateFlow<Boolean> = _verticalOnly.asStateFlow()
+    // Strong-object check: confirm that a strong object is still near after a trigger.
+    // Calibration switches it on for strong objects; it can be changed by hand.
+    private val _strongCheck = MutableStateFlow(false)
+    val strongCheck: StateFlow<Boolean> = _strongCheck.asStateFlow()
 
-    // One line describing what the sliders add up to ("Catches a 15 cm movement out to ...").
+    // One line describing what the slider adds up to ("Reacts to a field change of about 2 uT").
     private val _rangeSummary = MutableStateFlow("")
     val rangeSummary: StateFlow<String> = _rangeSummary.asStateFlow()
 
-    fun setTerritory(value: Float) { _territory.value = value.coerceIn(0f, 1f); applyModel() }
-    fun setMagnetPower(value: Float) { _magnetPower.value = value.coerceIn(0f, 1f); applyModel() }
-    fun setMagnetMovement(value: Float) { _magnetMovement.value = value.coerceIn(0f, 1f); applyModel() }
+    fun setSensitivity(value: Float) { _sensitivity.value = value.coerceIn(0f, 1f); applyModel() }
     fun setPhoneMovement(value: Int) { _phoneMovement.value = value.coerceIn(0, 100); applyModel() }
-    fun setVerticalOnly(on: Boolean) { _verticalOnly.value = on; applyModel() }
+    fun setStrongCheck(on: Boolean) { _strongCheck.value = on; applyModel() }
 
     /** Hands the current slider values to the detector. Cheap; safe from any thread. */
     private fun applyModel() {
         val noise = max(detector.noiseFloor, calibratedNoise)
-        val t = _territory.value
-        val p = _magnetPower.value
-        val m = _magnetMovement.value
-        detector.baseThresholdUt = DetectionModel.threshold(t, p, m, noise)
+        val s = _sensitivity.value
+        detector.baseThresholdUt = DetectionModel.threshold(s, noise)
         detector.adaptiveSensitivity = DetectionModel.adaptiveFromPhoneMovement(_phoneMovement.value)
-        detector.stillNearCheck = DetectionModel.usesStillNearCheck(p)
-        detector.verticalOnly = _verticalOnly.value
-        _rangeSummary.value = DetectionModel.summary(t, p, m, noise)
+        detector.stillNearCheck = _strongCheck.value
+        detector.verticalOnly = false
+        _rangeSummary.value = DetectionModel.summary(s, noise)
     }
 
     // Noise measured in the still phase of the last calibration (0 = none yet).
@@ -217,8 +206,7 @@ class MagneticSensorEngine(
     //   1. HOLD_STILL  (0-3 s)  phone still, object away     -> measures the room's noise
     //   2. MOVE_PHONE  (3-6 s)  phone moved gently, no object -> sets Phone Movement
     //   3. MOVE_OBJECT (6-10 s) object brought right up to the phone, then pulled away
-    //                                                         -> sets Magnetic Power, then Territory
-    // Up/Down and Magnet Movement are never changed by it.
+    //                                                         -> sets Sensitivity and the strong-object check
     enum class CalibrationPhase { IDLE, HOLD_STILL, MOVE_PHONE, MOVE_OBJECT }
 
     private val _isCalibratingObject = MutableStateFlow(false)
@@ -241,8 +229,8 @@ class MagneticSensorEngine(
         val levelPeak: Float = 0f,
         /** False when the object is too weak for the "still near" check. */
         val confirmationUsable: Boolean = true,
-        val newPower: Float = 0f,
-        val newTerritory: Float = 1f,
+        val newSensitivity: Float = 0.5f,
+        val newStrongCheck: Boolean = false,
         /** The new Phone Movement value, or -1 if the phone was not moved enough to measure it. */
         val newPhoneMovement: Int = -1,
         val reachable: Boolean = true
@@ -331,8 +319,8 @@ class MagneticSensorEngine(
         // A real pass should stand well clear of the room's own noise.
         val success = peak > max(noise * 1.6f, 0.3f) && levelPeak > 0f
 
-        var newPower = _magnetPower.value
-        var newTerritory = _territory.value
+        var newSensitivity = _sensitivity.value
+        var newStrong = _strongCheck.value
         var newPhone = -1
         var reachable = true
         var usable = true
@@ -340,14 +328,16 @@ class MagneticSensorEngine(
             calibratedNoise = noise
             detector.calibratedLevelPeak = levelPeak
             usable = levelPeak >= FieldDetector.USABLE_LEVEL_PEAK
-            newPower = DetectionModel.powerFromCalibration(levelPeak)
-            newTerritory = DetectionModel.maxReliableTerritory(newPower, _magnetMovement.value, noise)
-            reachable = DetectionModel.isReachable(newTerritory, newPower, _magnetMovement.value, noise)
+            val targetThreshold = DetectionModel.thresholdFromCalibration(levelPeak, noise)
+            newSensitivity = DetectionModel.sensitivityFromThreshold(targetThreshold, noise)
+            newStrong = DetectionModel.isStrongObject(levelPeak) && usable
+            // Reachable: the object's own pass stood well above the trigger level.
+            reachable = levelPeak >= 2f * targetThreshold
 
             // Phone Movement: choose how much movement to forgive so the movement seen in
             // step 2 (no object present) would NOT have triggered, with a 15% margin.
             if (calibMoveAllowance >= MIN_MEASURABLE_ALLOWANCE) {
-                val base = DetectionModel.threshold(newTerritory, newPower, _magnetMovement.value, noise)
+                val base = DetectionModel.threshold(newSensitivity, noise)
                 val scale = ((1.15f * calibMoveMax - base) / calibMoveAllowance).coerceIn(0.5f, 10f)
                 val adaptive = (10f / scale).coerceIn(1f, 20f)
                 // Never fully strict: a little forgiveness keeps a real object pass readable.
@@ -360,15 +350,15 @@ class MagneticSensorEngine(
             noiseFloorAtCapture = noise,
             levelPeak = if (success) levelPeak else 0f,
             confirmationUsable = usable,
-            newPower = newPower,
-            newTerritory = newTerritory,
+            newSensitivity = newSensitivity,
+            newStrongCheck = newStrong,
             newPhoneMovement = newPhone,
             reachable = reachable
         )
         if (success) {
             // Apply here too, so detection uses the new values immediately.
-            _magnetPower.value = newPower
-            _territory.value = newTerritory
+            _sensitivity.value = newSensitivity
+            _strongCheck.value = newStrong
             if (newPhone >= 0) _phoneMovement.value = newPhone
             applyModel()
         }
