@@ -13,7 +13,6 @@ import com.example.domain.model.VibePattern
 import com.example.haptics.DiscreetHapticEngine
 import com.example.haptics.VibePlan
 import com.example.haptics.VibeSpec
-import com.example.sensor.DetectionModel
 import com.example.sensor.MagneticSensorEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,12 +41,10 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
     val liveMicroTesla: StateFlow<Int>
     val isSaturated: StateFlow<Boolean>
 
-    // The four sliders and the Up/Down switch
-    val territory: StateFlow<Float>
-    val magnetPower: StateFlow<Float>
-    val magnetMovement: StateFlow<Float>
+    // The two sliders and the strong-object check
+    val sensitivity: StateFlow<Float>
     val phoneMovement: StateFlow<Int>
-    val verticalOnly: StateFlow<Boolean>
+    val strongCheck: StateFlow<Boolean>
     val rangeSummary: StateFlow<String>
 
     // Screen Off Mode (Pitch Black Immersive Mode)
@@ -140,11 +137,9 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         // Restore persisted settings
         sensorEngine.setTrickRunning(preferences.isTrickRunning)
         sensorEngine.setPower(preferences.isSensorPower)
-        sensorEngine.setTerritory(preferences.territory)
-        sensorEngine.setMagnetPower(preferences.magnetPower)
-        sensorEngine.setMagnetMovement(preferences.magnetMovement)
+        sensorEngine.setSensitivity(preferences.sensitivity)
         sensorEngine.setPhoneMovement(preferences.phoneMovement)
-        sensorEngine.setVerticalOnly(preferences.verticalOnly)
+        sensorEngine.setStrongCheck(preferences.strongCheck)
         sensorEngine.setCalibratedLevelPeak(preferences.calibratedLevelPeak)
 
         _isVisualModeEnabled.value = preferences.isVisualModeEnabled
@@ -164,11 +159,9 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         isTrickRunning = sensorEngine.isTrickRunning
         liveMicroTesla = sensorEngine.liveMicroTesla
         isSaturated = sensorEngine.isSaturated
-        territory = sensorEngine.territory
-        magnetPower = sensorEngine.magnetPower
-        magnetMovement = sensorEngine.magnetMovement
+        sensitivity = sensorEngine.sensitivity
         phoneMovement = sensorEngine.phoneMovement
-        verticalOnly = sensorEngine.verticalOnly
+        strongCheck = sensorEngine.strongCheck
         rangeSummary = sensorEngine.rangeSummary
 
         // Strike events from the sensor engine
@@ -249,13 +242,12 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             sensorEngine.calibrationEvents.collectLatest { result ->
                 if (result.success) {
-                    preferences.magnetPower = result.newPower
-                    preferences.territory = result.newTerritory
+                    preferences.sensitivity = result.newSensitivity
+                    preferences.strongCheck = result.newStrongCheck
                     if (result.newPhoneMovement >= 0) preferences.phoneMovement = result.newPhoneMovement
                     preferences.calibratedLevelPeak = result.levelPeak
-                    val reach = DetectionModel.radiusCm(result.newTerritory).roundToInt()
-                    val sb = StringBuilder("Calibrated. Territory set to about $reach cm")
-                    sb.append(", Magnetic Power to ${(result.newPower * 100).roundToInt()}%")
+                    val sb = StringBuilder("Calibrated. Sensitivity set to ${(result.newSensitivity * 100).roundToInt()}%")
+                    sb.append(if (result.newStrongCheck) ", strong-object check on" else ", strong-object check off")
                     if (result.newPhoneMovement >= 0) {
                         sb.append(", Phone Movement to ${result.newPhoneMovement}%")
                     } else {
@@ -296,19 +288,9 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         preferences.isSensorPower = sensorEngine.isPoweredOn.value
     }
 
-    fun setTerritory(value: Float) {
-        sensorEngine.setTerritory(value)
-        preferences.territory = sensorEngine.territory.value
-    }
-
-    fun setMagnetPower(value: Float) {
-        sensorEngine.setMagnetPower(value)
-        preferences.magnetPower = sensorEngine.magnetPower.value
-    }
-
-    fun setMagnetMovement(value: Float) {
-        sensorEngine.setMagnetMovement(value)
-        preferences.magnetMovement = sensorEngine.magnetMovement.value
+    fun setSensitivity(value: Float) {
+        sensorEngine.setSensitivity(value)
+        preferences.sensitivity = sensorEngine.sensitivity.value
     }
 
     fun setPhoneMovement(value: Int) {
@@ -316,9 +298,9 @@ class GoblinViewModel(application: Application) : AndroidViewModel(application) 
         preferences.phoneMovement = sensorEngine.phoneMovement.value
     }
 
-    fun setVerticalOnly(on: Boolean) {
-        sensorEngine.setVerticalOnly(on)
-        preferences.verticalOnly = on
+    fun setStrongCheck(on: Boolean) {
+        sensorEngine.setStrongCheck(on)
+        preferences.strongCheck = on
     }
 
     // --- Vibration ---
