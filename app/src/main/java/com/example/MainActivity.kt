@@ -127,11 +127,9 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
     val liveMicroTesla by viewModel.liveMicroTesla.collectAsStateWithLifecycle()
     val isSaturated by viewModel.isSaturated.collectAsStateWithLifecycle()
 
-    val territory by viewModel.territory.collectAsStateWithLifecycle()
-    val magnetPower by viewModel.magnetPower.collectAsStateWithLifecycle()
-    val magnetMovement by viewModel.magnetMovement.collectAsStateWithLifecycle()
+    val sensitivity by viewModel.sensitivity.collectAsStateWithLifecycle()
     val phoneMovement by viewModel.phoneMovement.collectAsStateWithLifecycle()
-    val verticalOnly by viewModel.verticalOnly.collectAsStateWithLifecycle()
+    val strongCheck by viewModel.strongCheck.collectAsStateWithLifecycle()
     val rangeSummary by viewModel.rangeSummary.collectAsStateWithLifecycle()
 
     val vibePattern by viewModel.vibePattern.collectAsStateWithLifecycle()
@@ -235,11 +233,9 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             reading = reading,
                             liveMicroTesla = liveMicroTesla,
                             isSaturated = isSaturated,
-                            territory = territory,
-                            magnetPower = magnetPower,
-                            magnetMovement = magnetMovement,
+                            sensitivity = sensitivity,
                             phoneMovement = phoneMovement,
-                            verticalOnly = verticalOnly,
+                            strongCheck = strongCheck,
                             rangeSummary = rangeSummary,
                             vibePattern = vibePattern,
                             vibeCount = vibeCount,
@@ -258,11 +254,9 @@ fun GoblinMainApp(viewModel: GoblinViewModel) {
                             onToggleDarkMode = { viewModel.setDarkMode(!isDarkMode) },
                             onToggleTrick = { viewModel.toggleTrick() },
                             onToggleActivateSensor = { viewModel.togglePower() },
-                            onTerritoryChange = { viewModel.setTerritory(it) },
-                            onMagnetPowerChange = { viewModel.setMagnetPower(it) },
-                            onMagnetMovementChange = { viewModel.setMagnetMovement(it) },
+                            onSensitivityChange = { viewModel.setSensitivity(it) },
                             onPhoneMovementChange = { viewModel.setPhoneMovement(it) },
-                            onVerticalOnlyChange = { viewModel.setVerticalOnly(it) },
+                            onStrongCheckChange = { viewModel.setStrongCheck(it) },
                             onVibePatternChange = { viewModel.setVibePattern(it) },
                             onVibeCountChange = { viewModel.setVibeCount(it) },
                             onVibeStrengthChange = { viewModel.setVibeStrength(it) },
