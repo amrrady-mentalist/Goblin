@@ -63,7 +63,6 @@ import androidx.compose.ui.unit.sp
 import com.example.domain.model.CreatureState
 import com.example.domain.model.MagneticReading
 import com.example.domain.model.VibePattern
-import com.example.sensor.DetectionModel
 import com.example.sensor.MagneticSensorEngine.CalibrationPhase
 import kotlin.math.roundToInt
 
@@ -85,12 +84,10 @@ fun ExactSettingsScreen(
     reading: MagneticReading,
     liveMicroTesla: Int,
     isSaturated: Boolean,
-    // The four sliders and the Up/Down switch
-    territory: Float,
-    magnetPower: Float,
-    magnetMovement: Float,
+    // The two sliders and the strong-object check
+    sensitivity: Float,
     phoneMovement: Int,
-    verticalOnly: Boolean,
+    strongCheck: Boolean,
     rangeSummary: String,
     // Vibration
     vibePattern: VibePattern,
@@ -114,11 +111,9 @@ fun ExactSettingsScreen(
     // Callbacks
     onToggleTrick: () -> Unit,
     onToggleActivateSensor: () -> Unit,
-    onTerritoryChange: (Float) -> Unit,
-    onMagnetPowerChange: (Float) -> Unit,
-    onMagnetMovementChange: (Float) -> Unit,
+    onSensitivityChange: (Float) -> Unit,
     onPhoneMovementChange: (Int) -> Unit,
-    onVerticalOnlyChange: (Boolean) -> Unit,
+    onStrongCheckChange: (Boolean) -> Unit,
     onVibePatternChange: (VibePattern) -> Unit,
     onVibeCountChange: (Int) -> Unit,
     onVibeStrengthChange: (Int) -> Unit,
@@ -383,22 +378,13 @@ fun ExactSettingsScreen(
                 // ---- Detection ----
                 GlassCard(title = "Detection") {
                     LabeledSlider(
-                        title = "Territory",
-                        valueText = "≈ ${DetectionModel.radiusCm(territory).roundToInt()} cm",
-                        leftLabel = "Close",
-                        rightLabel = "Far",
-                        value = territory,
-                        onChange = onTerritoryChange,
-                        tag = "territory_slider"
-                    )
-                    LabeledSlider(
-                        title = "Magnetic Power",
-                        valueText = "${(magnetPower * 100).roundToInt()}%",
-                        leftLabel = "Weak",
-                        rightLabel = "Strong",
-                        value = magnetPower,
-                        onChange = onMagnetPowerChange,
-                        tag = "magnet_power_slider"
+                        title = "Sensitivity",
+                        valueText = "${(sensitivity * 100).roundToInt()}%",
+                        leftLabel = "Low",
+                        rightLabel = "High",
+                        value = sensitivity,
+                        onChange = onSensitivityChange,
+                        tag = "sensitivity_slider"
                     )
                     LabeledSlider(
                         title = "Phone Movement",
@@ -409,20 +395,11 @@ fun ExactSettingsScreen(
                         onChange = { onPhoneMovementChange((it * 100f).roundToInt()) },
                         tag = "phone_movement_slider"
                     )
-                    LabeledSlider(
-                        title = "Magnet Movement",
-                        valueText = "≈ ${DetectionModel.moveCm(magnetMovement).roundToInt()} cm",
-                        leftLabel = "Shiver",
-                        rightLabel = "Swing",
-                        value = magnetMovement,
-                        onChange = onMagnetMovementChange,
-                        tag = "magnet_movement_slider"
-                    )
                     SwitchRow(
-                        title = "Up/Down only",
-                        checked = verticalOnly,
-                        onChange = onVerticalOnlyChange,
-                        tag = "up_down_switch"
+                        title = "Strong-object check",
+                        checked = strongCheck,
+                        onChange = onStrongCheckChange,
+                        tag = "strong_check_switch"
                     )
                     Text(
                         text = rangeSummary,
