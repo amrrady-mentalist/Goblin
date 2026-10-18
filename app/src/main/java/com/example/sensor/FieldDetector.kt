@@ -74,8 +74,8 @@ class FieldDetector {
 
     /**
      * The size of change (µT) that counts as a detection when the phone is still. When 0,
-     * it is worked out from [sensitivity]; the app sets it from Territory, Magnetic Power
-     * and Magnet Movement (see [DetectionModel]).
+     * it is worked out from [sensitivity]; the app sets it from the Sensitivity slider
+     * (see [DetectionModel]).
      */
     @Volatile var baseThresholdUt: Float = 0f
     @Volatile var sensitivity: Float = 1.9f
