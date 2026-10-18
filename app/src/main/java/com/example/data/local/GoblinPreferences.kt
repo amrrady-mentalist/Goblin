@@ -17,12 +17,10 @@ class GoblinPreferences(context: Context) {
         private const val KEY_VIBRATION_WITH_VISUAL = "key_vibration_with_visual"
         private const val KEY_CALIBRATED_LEVEL_PEAK = "key_calibrated_level_peak"
 
-        // The four sliders and the Up/Down switch
-        private const val KEY_TERRITORY = "key_territory"
-        private const val KEY_MAGNET_POWER = "key_magnet_power"
-        private const val KEY_MAGNET_MOVEMENT = "key_magnet_movement"
+        // The two sliders and the strong-object check
+        private const val KEY_SENSITIVITY = "key_sensitivity"
         private const val KEY_PHONE_MOVEMENT = "key_phone_movement"
-        private const val KEY_VERTICAL_ONLY = "key_vertical_only"
+        private const val KEY_STRONG_CHECK = "key_strong_check"
 
         // Vibration
         private const val KEY_VIBE_PATTERN = "key_vibe_pattern"
@@ -56,25 +54,17 @@ class GoblinPreferences(context: Context) {
         get() = prefs.getFloat(KEY_CALIBRATED_LEVEL_PEAK, 0f)
         set(value) = prefs.edit().putFloat(KEY_CALIBRATED_LEVEL_PEAK, value).apply()
 
-    var territory: Float
-        get() = prefs.getFloat(KEY_TERRITORY, 1f)
-        set(value) = prefs.edit().putFloat(KEY_TERRITORY, value).apply()
-
-    var magnetPower: Float
-        get() = prefs.getFloat(KEY_MAGNET_POWER, 0.5f)
-        set(value) = prefs.edit().putFloat(KEY_MAGNET_POWER, value).apply()
-
-    var magnetMovement: Float
-        get() = prefs.getFloat(KEY_MAGNET_MOVEMENT, 0.5f)
-        set(value) = prefs.edit().putFloat(KEY_MAGNET_MOVEMENT, value).apply()
+    var sensitivity: Float
+        get() = prefs.getFloat(KEY_SENSITIVITY, 0.5f)
+        set(value) = prefs.edit().putFloat(KEY_SENSITIVITY, value).apply()
 
     var phoneMovement: Int
         get() = prefs.getInt(KEY_PHONE_MOVEMENT, 50)
         set(value) = prefs.edit().putInt(KEY_PHONE_MOVEMENT, value).apply()
 
-    var verticalOnly: Boolean
-        get() = prefs.getBoolean(KEY_VERTICAL_ONLY, false)
-        set(value) = prefs.edit().putBoolean(KEY_VERTICAL_ONLY, value).apply()
+    var strongCheck: Boolean
+        get() = prefs.getBoolean(KEY_STRONG_CHECK, false)
+        set(value) = prefs.edit().putBoolean(KEY_STRONG_CHECK, value).apply()
 
     private fun pattern(key: String, default: VibePattern): VibePattern =
         try {
