@@ -153,19 +153,19 @@ fun TutorialScreen(
                 TutorialStepItem(
                     icon = Icons.Default.Tune,
                     title = "2. Calibrate first",
-                    body = "Tap Calibrate and follow the screen for 10 seconds. Step 1: hold the phone still with the object away. Step 2: move the phone gently, as if walking, with the object still away. Step 3: bring the object right up to the phone, then pull it away. The app then sets Territory, Magnetic Power and Phone Movement for you. You can adjust any slider by hand afterwards."
+                    body = "Tap Calibrate and follow the screen for 10 seconds. Step 1: hold the phone still with the object away. Step 2: move the phone gently, as if walking, with the object still away. Step 3: bring the object right up to the phone, then pull it away. The app then sets Sensitivity, Phone Movement and the strong-object check for you. You can adjust any of them by hand afterwards."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.Speed,
-                    title = "3. The four sliders",
-                    body = "Territory: how far from the phone to listen, from close to far. Magnetic Power: how strong the object is, from an earbud to a strong neodymium magnet. Magnet Movement: how big a movement of the object should count, from a small shiver of the hand to a big swing. Phone Movement: how much movement of the phone itself is forgiven. Strict means the phone must be still; Relaxed means walking is fine. The line under the sliders tells you what they add up to."
+                    title = "3. The sliders",
+                    body = "Sensitivity: how small a change in the magnetic field counts. Low means only a big, close change; High means tiny or distant changes too. Too high can react to the room, so calibrate and then nudge it. Phone Movement: how much movement of the phone itself is forgiven. Strict means the phone must be still; Relaxed means walking is fine. The line under the sliders shows the size of change the app reacts to."
                 )
 
                 TutorialStepItem(
                     icon = Icons.Default.CheckCircle,
-                    title = "4. Up/Down only",
-                    body = "Turn this on if the object always moves straight up or down, like a hand rising and falling. Sideways movement is then ignored. Calibration never changes this switch."
+                    title = "4. Strong-object check",
+                    body = "For strong magnets such as a watch charger or neodymium. After a trigger, the app checks that the object is still near, so a quick pass-by or taking the object away does not count. Calibration turns it on for strong objects and off for weak ones. You can switch it by hand."
                 )
 
                 TutorialStepItem(
